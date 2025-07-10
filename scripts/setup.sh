@@ -1,0 +1,50 @@
+#!/bin/bash
+
+
+#download reference tarball for singleton
+echo "Starting Reference suite download"
+wget https://zenodo.org/records/14027047/files/hifi-wdl-resources-v2.0.0.tar
+echo "Reference Tarball Sucessfully downloaded"
+echo "Extracting tarball"
+tar -xvf hifi-wdl-resources-v2.0.0.tar
+echo "Finished Extracting tarball"
+mv hifi-wdl-resources-v2.0.0 hifi-wdl-resources-v2
+mkdir -p hifi-wdl-resources-v2/hg002
+wget -P hifi-wdl-resources-v2/hg002/ https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/changes/hg002v1.1_to_GRCh38.chain.gz
+wget -P hifi-wdl-resources-v2/hg002/ https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v1.1.fasta.gz
+mv hifi-wdl-resources-v2/hg002/hg002v1.1.fasta.gz hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz
+module load samtools 
+samtools faidx hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz 
+bgzip -r hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz
+
+echo "Starting somatic suite download"
+wget https://zenodo.org/record/14847828/files/hifisomatic_resources.tar.gz
+echo "Reference Tarball Sucessfully downloaded"
+echo "Extracting tarball"
+tar -xvzf hifisomatic_resources.tar.gz
+echo "Finished Extracting tarball"
+
+echo "Starting 1000G panel of normal from Severus GitHub"
+wget https://github.com/KolmogorovLab/Severus/raw/refs/heads/main/pon/PoN_1000G_hg38_extended.tsv.gz
+echo "Reference Tarball Sucessfully downloaded"
+
+
+echo "Starting AnnotSV suite download"
+wget https://github.com/lgmgeo/AnnotSV/raw/master/bin/INSTALL_annotations.sh
+echo "Install Script Sucessfully downloaded"
+echo "Starting AnnotSV cache download"
+chmod +x INSTALL_annotations.sh
+bash INSTALL_annotations.sh
+echo "Finished download cache"
+mv AnnotSV_annotations AnnotSV
+tar -czvf annotsv_cache.tar.gz AnnotSV
+
+echo "Starting VEP suite download"
+wget https://ftp.ensembl.org/pub/release-112/variation/indexed_vep_cache/homo_sapiens_refseq_vep_112_GRCh38.tar.gz 
+echo "Reference Tarball Sucessfully downloaded"
+
+
+
+#prepull images
+bash scripts/create_image_manifest.sh
+bash scripts/pre-pull.sh

@@ -5,7 +5,7 @@ export APPTAINER_TMP_DIR=="/hpc/mydata/ram.ayyala/HiFi-human-WGS-editing-QC-WDL/
 mkdir -p "${APPTAINER_CACHEDIR}" "${APPTAINER_TMP_DIR}"
 
 
-manifest="../image_manifest.txt"
+manifest="image_manifest.txt"
 singularity_cache="${APPTAINER_CACHEDIR}"
 
 while read -r container_url; do
