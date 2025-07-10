@@ -25,7 +25,7 @@ task Severus_sv {
 
     severus \
       --target-bam ~{wt_bam} \
-      ~{"--control-bam " + parental_bam} \
+      ~{if defined(parental_bam) then "--control-bam " + parental_bam  else ""} \
       ~{"--phasing-vcf " + phased_vcf} \
       ~{"--PON " + PON_tsv} \
       --out-dir ~{pname + "_severus"} \
@@ -63,64 +63,7 @@ task Severus_sv {
   }
 }
 
-# Use Severus to call SV
-task Severus_sv_wt_only {
-  input {
-    File wt_bam 
-    File wt_bam_index
-    File trf_bed
-    File? phased_vcf
-    File? PON_tsv
-    String pname = "Sample_1_test"
-    Int threads
-    Int min_supp_reads
-  }
 
-  Float file_size = ceil(size(wt_bam, "GB") + size(phased_vcf, "GB") + 10)
-
-  command <<<
-    set -euxo pipefail
-    
-    echo "Running Severus for ~{pname}"
-
-    severus --version
-
-    severus \
-      --target-bam ~{wt_bam} \
-      ~{"--phasing-vcf " + phased_vcf} \
-      ~{"--PON " + PON_tsv} \
-      --out-dir ~{pname + "_severus"} \
-      -t ~{threads} \
-      --vntr-bed ~{trf_bed} \
-      --min-support ~{min_supp_reads} \
-      --resolve-overlaps \
-      --between-junction-ins \
-      --single-bp
-
-    # Compress SVs plots HTML inside somatic_SVs/plots directory
-    # Check if the directory exists first
-    if [[ -d ~{pname + "_severus/somatic_SVs/plots"} ]]
-      then tar -czvf ~{pname + "_severus/somatic_SVs/plots.tar.gz"} ~{pname + "_severus/somatic_SVs/plots"}
-    fi
-  >>>
-
-  output {
-    File output_vcf = pname + "_severus/somatic_SVs/severus_somatic" + ".vcf"
-    File output_all_vcf = pname + "_severus/all_SVs/severus_all.vcf"
-    File output_breakpoint_clusters = pname + "_severus/somatic_SVs/" + "breakpoint_clusters_list.tsv"
-    File output_breakpoint_clusters_all = pname + "_severus/all_SVs/" + "breakpoint_clusters_list.tsv"
-    File output_somatic_sv_plots = pname + "_severus/somatic_SVs/plots.tar.gz"
-  }
-
-  runtime {
-    docker: "quay.io/biocontainers/severus@sha256:fb4471e0504d564de78215ae15c081a1bb2022ad51e993eba92bc6fa5052a05d"
-    cpu: threads
-    memory: "~{threads * 4} GB"
-    disk: file_size + " GB"
-    maxRetries: 2
-    preemptible: 1
-  }
-}
 task tabix_vcf {
   input {
     File vcf

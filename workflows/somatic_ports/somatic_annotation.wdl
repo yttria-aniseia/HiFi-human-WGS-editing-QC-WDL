@@ -278,6 +278,8 @@ task prioritize_small_variants {
     Float file_size = ceil(size(vep_annotated_vcf, "GB") + 10)
     String fname = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + ".tsv"
     String fname2 = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_intogenCCG.tsv"
+    String fname_ranked = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_ranked.tsv"
+    String fname_filtered = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_filtered.tsv"
 
     command <<<
     set -euxo pipefail
@@ -286,19 +288,57 @@ task prioritize_small_variants {
 
     echo -e "CHROM\tPOS\tREF\tALT\tFORMAT\t~{pname}\t$(bcftools +split-vep ~{vep_annotated_vcf} -l | cut -f2 | tr '\n' '\t' | sed 's/\t$//g')" > ~{fname}
     bcftools +split-vep ~{vep_annotated_vcf} -A tab -f '%CHROM\t%POS\t%REF\t%ALT\t%FORMAT\t%CSQ\n' >> ~{fname}
+    
+    #RANKING AND FILTERING 
+    [[ -f "~{fname}" ]] || { echo "ERROR: ${fname} not found" >&2; exit 1; }
 
-    csvtk join -t \
-        ~{fname} \
-        <(sed 's/DOMAINS/CCG_DOMAINS/g' /app/Compendium_Cancer_Genes.tsv) \
-        -f SYMBOL |\
-            csvtk summary -t -g "$(csvtk headers -t ~{fname} | tr '\n' ',' | sed 's/,$//g')" \
-                -f CANCER_TYPE:collapse,COHORT:collapse,TRANSCRIPT:collapse,MUTATIONS:collapse,ROLE:collapse,CGC_GENE:collapse,CGC_CANCER_GENE:collapse,CCG_DOMAINS:collapse,2D_CLUSTERS:collapse,3D_CLUSTERS:collapse -s ";" |\
-                sed 's/:collapse//g' > ~{fname2}
+    # 2) find SYMBOL column index (1‐based)
+    IFS=$'\t' read -r -a hdr < <(head -n1 "~{fname}")
+    symcol=0
+    for i in "${!hdr[@]}"; do
+      [[ "${hdr[i]}" == "SYMBOL" ]] && { symcol=$((i+1)); break; }
+    done
+    [[ $symcol -gt 0 ]] || { echo "ERROR: SYMBOL column not found" >&2; exit 1; }
+
+    # 3) write header unchanged
+    head -n1 "~{fname}" > "~{fname_ranked}"
+    
+    # 4) rank & sort, then strip the rank in awk (no cut!)
+    tail -n +2 "~{fname}" \
+      | awk -F $'\t' -v OFS=$'\t' -v col="$symcol" '
+          {
+            # compute numeric rank
+            r = ($col=="HIGH"     ? 1 : $col=="MODERATE" ? 2 : $col=="LOW"      ? 3 : $col=="MODIFIER" ? 4 : 5)
+            # prepend it to the line
+            print r, $0
+          }
+        ' \
+      | sort -t $'\t' -k1,1n \
+      | awk -F $'\t' -v OFS=$'\t' '
+          {
+            # drop the first field (the rank) and re-print the rest
+            for(i=2; i<=NF; i++){
+              printf("%s%s", $i, i<NF?OFS:ORS)
+            }
+          }
+        ' \
+      >> "~{fname_ranked}"
+    # 5) filter HIGH or MODERATE into the final file
+    awk -F $'\t' -v OFS=$'\t' -v col="$symcol" '
+      NR==1 { print; next }
+      ($col=="HIGH" || $col=="MODERATE")
+    ' "~{fname_ranked}" > "~{fname_filtered}"
+
+
+
+      
     >>>
 
     output {
         File vep_annotated_tsv = fname
-        File vep_annotated_tsv_intogenCCG = fname2
+        File vep_annotated_ranked_tsv = fname_ranked
+        File vep_annotated_filtered_tsv = fname_filtered
+        #File vep_annotated_tsv_intogenCCG = fname2
     }
 
     runtime {

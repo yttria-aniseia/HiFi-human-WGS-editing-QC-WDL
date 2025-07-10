@@ -1,4 +1,4 @@
-version 1.1
+version 1.0
 
 struct Sample {
   String sample_id
@@ -6,12 +6,7 @@ struct Sample {
   String? sex
   Boolean affected
 
-  #Array[File] hifi_reads
-  # parental inputs (formerly “normal”); empty if none provided
-  Array[File] parental_bams
-  # wild-type inputs (formerly “tumor”); must be non-empty
-  Array[File] wild_type_bams
-
+  Array[File] hifi_reads
 
   String? father_id
   String? mother_id
