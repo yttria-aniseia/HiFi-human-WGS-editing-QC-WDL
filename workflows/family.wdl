@@ -10,6 +10,7 @@ import "wdl-common/wdl/tasks/trgt.wdl" as Trgt
 import "wdl-common/wdl/tasks/write_ped_phrank.wdl" as Write_ped_phrank
 import "tertiary/tertiary.wdl" as TertiaryAnalysis
 import "wdl-common/wdl/tasks/utilities.wdl" as Utilities
+import "edit-qc/bcftools_aux.wdl" as Bcftools_aux
 import "somatic_ports/somatic_annotation.wdl" as Somatic_annotation
 import "somatic_ports/somatic_calling.wdl" as Somatic_calling
 workflow humanwgs_family {
@@ -170,7 +171,7 @@ workflow humanwgs_family {
   }
   
   scatter (sample_index in range(length(family.samples))) { 
-      call Bcftools.bcftools_merge_assembly_align as merge_sv_vcfs_align_assembly {
+      call Bcftools_aux.bcftools_merge_assembly_align as merge_sv_vcfs_align_assembly {
                 input:
                     vcfs = [upstream.large_sv_filtered_vcf[sample_index], select_all(select_first([joint.split_joint_structural_variant_vcfs,upstream.sv_vcf]))[sample_index]],
                     out_prefix  = "~{sid[sample_index]}.merged_structural_variants",

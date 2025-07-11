@@ -11,7 +11,8 @@ import "../wdl-common/wdl/tasks/mosdepth.wdl" as Mosdepth
 import "../wdl-common/wdl/tasks/trgt.wdl" as Trgt
 import "../wdl-common/wdl/tasks/paraphase.wdl" as Paraphase
 import "../wdl-common/wdl/tasks/hificnv.wdl" as Hificnv
-import "../wdl-common/wdl/tasks/plot_hificnv.wdl" as plot_hificnv
+import "../edit-qc/plot_hificnv.wdl" as plot_hificnv
+import "../edit-qc/samtools_aux.wdl" as Samtools_aux
 import "../wdl-common/wdl/workflows/get_pbsv_splits/get_pbsv_splits.wdl" as Pbsv_splits
 import "../assembly/assembly.wdl" as Assembly
 
@@ -243,7 +244,7 @@ workflow upstream {
     }
   }
   if (length(hifi_reads) > 1) {
-    call Samtools.samtools_cat as samtools_cat {
+    call Samtools_aux.samtools_cat as samtools_cat {
       input:
         bams               = hifi_reads,
         out_prefix         = "~{sample_id}.~{ref_map['name']}",
