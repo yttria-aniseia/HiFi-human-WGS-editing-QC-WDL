@@ -13,15 +13,16 @@ mkdir -p hifi-wdl-resources-v2/hg002
 wget -P hifi-wdl-resources-v2/hg002/ https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/changes/hg002v1.1_to_GRCh38.chain.gz
 wget -P hifi-wdl-resources-v2/hg002/ https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v1.1.fasta.gz
 mv hifi-wdl-resources-v2/hg002/hg002v1.1.fasta.gz hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz
-module load samtools 
-samtools faidx hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz 
+module load samtools
+samtools faidx hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz
 bgzip -r hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz
 
 echo "Starting somatic suite download"
 wget https://zenodo.org/record/14847828/files/hifisomatic_resources.tar.gz
 echo "Reference Tarball Sucessfully downloaded"
 echo "Extracting tarball"
-tar -xvzf hifisomatic_resources.tar.gz
+mkdir -p hifisomatic_resources
+tar -xvzf hifisomatic_resources.tar.gz -C hifisomatic_resources
 echo "Finished Extracting tarball"
 
 echo "Starting 1000G panel of normal from Severus GitHub"
@@ -40,7 +41,7 @@ mv AnnotSV_annotations AnnotSV
 tar -czvf annotsv_cache.tar.gz AnnotSV
 
 echo "Starting VEP suite download"
-wget https://ftp.ensembl.org/pub/release-112/variation/indexed_vep_cache/homo_sapiens_refseq_vep_112_GRCh38.tar.gz 
+wget https://ftp.ensembl.org/pub/release-112/variation/indexed_vep_cache/homo_sapiens_refseq_vep_112_GRCh38.tar.gz
 echo "Reference Tarball Sucessfully downloaded"
 
 
