@@ -41,7 +41,7 @@ task hifiasm_assembly {
         Int threads
         RuntimeAttributes runtime_attributes
     }
-    Int mem_gb    = ceil(threads * 4)
+    Int mem_gb    = ceil(threads * 6)
     Int disk_size = ceil(size(input_fasta, "GB") * 3 + 70)
 
     command <<<
@@ -66,8 +66,6 @@ task hifiasm_assembly {
     awsBatchRetryAttempts: runtime_attributes.max_retries  # !UnknownRuntimeKey
     zones: runtime_attributes.zones
     }
-
-
 }
 
 task gfa_to_fa {
@@ -103,9 +101,41 @@ task gfa_to_fa {
     maxRetries: runtime_attributes.max_retries
     awsBatchRetryAttempts: runtime_attributes.max_retries  # !UnknownRuntimeKey
     zones: runtime_attributes.zones
-    }
+    }    
+}
 
-    
+task quast {
+    input {
+        File input_fa_1       # haplotype 1 assembly
+        File input_fa_2       # haplotype 2 assembly
+        File input_fa         # full fasta before assembly
+        File ref
+        RuntimeAttributes runtime_attributes
+    }
+    Int threads = 32
+    Int mem_gb    = ceil(threads * 4)
+    Int disk_size = ceil(size(input_fa_1, "GB") * 3 + size(input_fa_2, "GB") + 70)
+
+    command <<<
+        set -euxo pipefail
+        name=$(basename "~{input_fa_1}" .asm.bp.hap1.p_ctg.fa)
+        quast ~{input_fa_1} ~{input_fa_2} --pacbio ~{input_fa} -r ~{ref} --threads ~{threads} --conserved-genes-finding -o ${name}_quast
+    >>>
+
+    output {
+        File quast_output = sub(basename(input_fa_1), "\\.asm.bp.hap1.p_ctg.fa$", "") + "_quast"
+    }
+    runtime {
+    docker: "quay.io/biocontainers/quast@sha256:a8d5771c90e4fb6daf32885c56ccece7523344c4e7cd02aa1601a75dff885c22"
+    cpu: threads
+    memory: mem_gb + " GB"
+    disk: disk_size + " GB"
+    disks: "local-disk " + disk_size + " HDD"
+    preemptible: runtime_attributes.preemptible_tries
+    maxRetries: runtime_attributes.max_retries
+    awsBatchRetryAttempts: runtime_attributes.max_retries  # !UnknownRuntimeKey
+    zones: runtime_attributes.zones
+    }
 }
 
 task pav {

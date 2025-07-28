@@ -310,40 +310,40 @@ workflow humanwgs_family {
       
       File? parental_bam = 
         if (family.samples[sample_index].sex == "MALE") then  
-            if (family.samples[sample_index].father_id != "NA") then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
-            else if (family.samples[sample_index].mother_id != "NA") then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
+            if (defined(family.samples[sample_index].father_id)) then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
+            else if (defined(family.samples[sample_index].mother_id)) then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
             else None 
         else if (family.samples[sample_index].sex == "FEMALE") then  
-            if (family.samples[sample_index].mother_id != "NA") then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
-            else if (family.samples[sample_index].father_id != "NA") then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
+            if (defined(family.samples[sample_index].mother_id)) then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
+            else if (defined(family.samples[sample_index].father_id)) then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
             else None 
         else            
-            if (family.samples[sample_index].father_id != "NA") then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
-            else if (family.samples[sample_index].mother_id != "NA") then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
+            if (defined(family.samples[sample_index].father_id)) then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
+            else if (defined(family.samples[sample_index].mother_id)) then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
             else None 
 
       File? parental_bam_index = 
         if (family.samples[sample_index].sex == "MALE") then  
-            if (family.samples[sample_index].father_id != "NA") then index_by_id[select_first([family.samples[sample_index].father_id])]
-            else if (family.samples[sample_index].mother_id != "NA") then index_by_id[select_first([family.samples[sample_index].mother_id])]
+            if (defined(family.samples[sample_index].father_id)) then index_by_id[select_first([family.samples[sample_index].father_id])]
+            else if (defined(family.samples[sample_index].mother_id)) then index_by_id[select_first([family.samples[sample_index].mother_id])]
             else None  
         else if (family.samples[sample_index].sex == "FEMALE") then  
-            if (family.samples[sample_index].mother_id != "NA") then index_by_id[select_first([family.samples[sample_index].mother_id])]
-            else if (family.samples[sample_index].father_id != "NA") then index_by_id[select_first([family.samples[sample_index].father_id])]
+            if (defined(family.samples[sample_index].mother_id)) then index_by_id[select_first([family.samples[sample_index].mother_id])]
+            else if (defined(family.samples[sample_index].father_id)) then index_by_id[select_first([family.samples[sample_index].father_id])]
             else None 
         else  
-            if (family.samples[sample_index].father_id != "NA") then index_by_id[select_first([family.samples[sample_index].father_id])]
-            else if (family.samples[sample_index].mother_id != "NA") then index_by_id[select_first([family.samples[sample_index].mother_id])]
+            if (defined(family.samples[sample_index].father_id)) then index_by_id[select_first([family.samples[sample_index].father_id])]
+            else if (defined(family.samples[sample_index].mother_id)) then index_by_id[select_first([family.samples[sample_index].mother_id])]
             else None 
 
 
     #  File? parental_bam = 
-     #   if (family.samples[sample_index].father_id != "NA") then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
-     #   else if (family.samples[sample_index].mother_id != "NA") then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
+     #   if (family.samples[sample_index].father_id) then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
+     #   else if (family.samples[sample_index].mother_id) then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
       #  else None 
       #File? parental_bam_index = 
-      #  if (family.samples[sample_index].father_id != "NA") then index_by_id[select_first([family.samples[sample_index].father_id])]
-      #  else if (family.samples[sample_index].mother_id != "NA") then index_by_id[select_first([family.samples[sample_index].mother_id])]
+      #  if (family.samples[sample_index].father_id) then index_by_id[select_first([family.samples[sample_index].father_id])]
+      #  else if (family.samples[sample_index].mother_id) then index_by_id[select_first([family.samples[sample_index].mother_id])]
       #  else None 
     
       call Somatic_calling.Severus_sv as phased_severus {
@@ -423,7 +423,8 @@ workflow humanwgs_family {
       call Somatic_annotation.prioritize_small_variants as prioritizeSomatic {
           input: 
               vep_annotated_vcf       = annotateGermline.vep_annotated_vcf, 
-              threads                 = 32
+              threads                 = 32,
+              sample                  = family.samples[sample_index].sample_id
       }
 
     }
@@ -462,6 +463,14 @@ workflow humanwgs_family {
     Array[File]   mosdepth_depth_distribution_plot = upstream.mosdepth_depth_distribution_plot
     Array[String] stat_mean_depth                  = upstream.stat_mean_depth
     Array[String] inferred_sex                     = upstream.inferred_sex
+
+    # mosdepth hg002 outputs
+    Array[File]   mosdepth_hg002_summary                 = upstream.mosdepth_hg002_summary
+    Array[File]   mosdepth_hg002_region_bed              = upstream.mosdepth_hg002_region_bed
+    Array[File]   mosdepth_hg002_region_bed_index        = upstream.mosdepth_hg002_region_bed_index
+    Array[File]   mosdepth_hg002_depth_distribution_plot = upstream.mosdepth_hg002_depth_distribution_plot
+    Array[String] stat_mean_depth_hg002                  = upstream.stat_mean_depth_hg002
+    Array[String] inferred_sex_hg002                     = upstream.inferred_sex_hg002
 
     # phasing stats
     Array[File]   phase_stats           = downstream.phase_stats

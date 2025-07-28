@@ -89,15 +89,6 @@ workflow upstream {
         ref_name           = ref_map["hg002_name"],
         runtime_attributes = default_runtime_attributes
     }
-    call Mosdepth.mosdepth as mosdepth_hg002 {
-      input:
-        sample_id          = sample_id,
-        ref_name           = ref_map["hg002_name"],
-        aligned_bam        = pbmm2_align_hg002.aligned_bam ,
-        aligned_bam_index  = pbmm2_align_hg002.aligned_bam_index,
-        infer_sex          = true,
-        runtime_attributes = default_runtime_attributes
-    }
     call Pbsv.pbsv_discover {
       input:
         aligned_bam        = pbmm2_align.aligned_bam,
@@ -122,13 +113,33 @@ workflow upstream {
         out_prefix         = "~{sample_id}.~{ref_map['name']}",
         runtime_attributes = default_runtime_attributes
     }
+    call Samtools.samtools_merge as samtools_merge_hg002 {
+      input:
+        bams               = pbmm2_align_hg002.aligned_bam,
+        out_prefix         = "~{sample_id}.~{ref_map['hg002_name']}",
+        runtime_attributes = default_runtime_attributes
+    }
   }
 
   # select the merged bam if it exists, otherwise select the first (only) aligned bam
   File aligned_bam_data  = select_first([samtools_merge.merged_bam, pbmm2_align.aligned_bam[0]])
   File aligned_bam_index = select_first([samtools_merge.merged_bam_index, pbmm2_align.aligned_bam_index[0]])
 
-  call Mosdepth.mosdepth {
+  File aligned_bam_data_hg002  = select_first([samtools_merge_hg002.merged_bam, pbmm2_align_hg002.aligned_bam[0]])
+  File aligned_bam_index_hg002 = select_first([samtools_merge_hg002.merged_bam_index, pbmm2_align_hg002.aligned_bam_index[0]])
+
+  
+  call Mosdepth.mosdepth as mosdepth_hg002 {
+    input:
+      sample_id          = sample_id,
+      ref_name           = ref_map["hg002_name"],
+      aligned_bam        = aligned_bam_data_hg002,
+      aligned_bam_index  = aligned_bam_index_hg002,
+      infer_sex          = true,
+      runtime_attributes = default_runtime_attributes
+  }
+
+  call Mosdepth.mosdepth as mosdepth {
     input:
       sample_id          = sample_id,
       ref_name           = ref_map["name"],
@@ -277,8 +288,8 @@ workflow upstream {
     File out_bam_index = aligned_bam_index
 
     #hg002 alingments 
-    Array[File] out_bam_hg002       = pbmm2_align_hg002.aligned_bam
-    Array[File] out_bam_hg002_index = pbmm2_align_hg002.aligned_bam_index
+    File out_bam_hg002       = aligned_bam_data_hg002
+    File out_bam_hg002_index = aligned_bam_index_hg002
     
     # mosdepth outputs
     File   mosdepth_summary                 = mosdepth.summary
@@ -289,10 +300,10 @@ workflow upstream {
     String stat_mean_depth                  = mosdepth.stat_mean_depth
 
     # hg002 mosdepth_hg002 outputs
-    Array[File]   mosdepth_hg002_summary                 = mosdepth_hg002.summary
-    Array[File]   mosdepth_hg002_region_bed              = mosdepth_hg002.region_bed
-    Array[File]   mosdepth_hg002_region_bed_index        = mosdepth_hg002.region_bed_index
-    Array[File]   mosdepth_hg002_depth_distribution_plot = mosdepth_hg002.depth_distribution_plot
+    File   mosdepth_hg002_summary                 = mosdepth_hg002.summary
+    File   mosdepth_hg002_region_bed              = mosdepth_hg002.region_bed
+    File   mosdepth_hg002_region_bed_index        = mosdepth_hg002.region_bed_index
+    File   mosdepth_hg002_depth_distribution_plot = mosdepth_hg002.depth_distribution_plot
     String inferred_sex_hg002                     = mosdepth_hg002.inferred_sex
     String stat_mean_depth_hg002                  = mosdepth_hg002.stat_mean_depth
 
@@ -352,6 +363,8 @@ workflow upstream {
     # hifiasm assembly outputs
     File asm_1 = assembly.asm_1
     File asm_2 = assembly.asm_2
+
+		File asm_quast = assembly.quast_output
 
     # pav outputs
     File pav_vcf = assembly.pav_vcf

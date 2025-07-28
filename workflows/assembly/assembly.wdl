@@ -50,6 +50,14 @@ workflow assembly {
       input_hap2_gfa            = hifiasm_assembly.input_2_asm,
       runtime_attributes = default_runtime_attributes
   }
+	call assembly_tasks.quast as quast {
+	  input:
+	    input_fa_1 = gfa_to_fa.fasta_hap1,
+	    input_fa_2 = gfa_to_fa.fasta_hap2,
+	    input_fa = bam_to_fasta.input_fasta,
+	    ref = ref_map["hg002_fasta"],
+	    runtime_attributes = default_runtime_attributes
+	}
   call assembly_tasks.pav as pav {
     input:
       ref            = ref_map["hg002_fasta"],
@@ -83,6 +91,9 @@ workflow assembly {
     File asm_1 = hifiasm_assembly.input_1_asm
     File asm_2 = hifiasm_assembly.input_2_asm
 
+		# quast
+		File quast_output = quast.quast_output
+		
     # pav outputs
     File pav_vcf = select_first([pav.pav_vcf])
     File pav_vcf_index = select_first([pav.pav_vcf_index])
