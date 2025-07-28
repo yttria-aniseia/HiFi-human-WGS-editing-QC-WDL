@@ -1,7 +1,7 @@
 #!/bin/bash
 
 export APPTAINER_CACHEDIR="$PWD/miniwdl_cache/singularity_cache/"
-export APPTAINER_TMP_DIR=="$PWD/miniwdl_cache/tmp"
+export APPTAINER_TMP_DIR="$PWD/miniwdl_cache/tmp"
 mkdir -p "${APPTAINER_CACHEDIR}" "${APPTAINER_TMP_DIR}"
 
 

@@ -16,6 +16,12 @@ mv hifi-wdl-resources-v2/hg002/hg002v1.1.fasta.gz hifi-wdl-resources-v2/hg002/hg
 module load samtools
 samtools faidx hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz
 bgzip -r hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz
+echo "hg002_name	HG002
+hg002_fasta	hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz
+hg002_fasta_index	hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz.fai
+hg002_fasta_bgzf_index	hifi-wdl-resources-v2/hg002/hg002v1.1.fa.gz.gzi
+hg002_chain	hifi-wdl-resources-v2/hg002/hg002v1.1_to_GRCh38.chain.gz
+" >> hifi-wdl-resources-v2/GRCh38.ref_map.v2p0p0.template.tsv
 
 echo "Starting somatic suite download"
 wget https://zenodo.org/record/14847828/files/hifisomatic_resources.tar.gz
