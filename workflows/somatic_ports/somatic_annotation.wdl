@@ -217,7 +217,7 @@ task prioritize_sv_intogen {
     csvtk version
 
     # Remove any quote from the file
-    sed 's/"//g' ~{annotSV_tsv} > ~{basename(annotSV_tsv)}_noquote.tsv
+    sed "s/\"//g" ~{annotSV_tsv} > ~{basename(annotSV_tsv)}_noquote.tsv
 
     csvtk join -t \
         ~{basename(annotSV_tsv)}_noquote.tsv \
@@ -272,6 +272,7 @@ task prioritize_small_variants {
     input {
         File vep_annotated_vcf
         Int threads
+        String sample
         String pname="sample"
     }
 
@@ -287,7 +288,7 @@ task prioritize_small_variants {
     csvtk version
 
     echo -e "CHROM\tPOS\tREF\tALT\tFORMAT\t~{pname}\t$(bcftools +split-vep ~{vep_annotated_vcf} -l | cut -f2 | tr '\n' '\t' | sed 's/\t$//g')" > ~{fname}
-    bcftools +split-vep ~{vep_annotated_vcf} -A tab -f '%CHROM\t%POS\t%REF\t%ALT\t%FORMAT\t%CSQ\n' >> ~{fname}
+     bcftools view -s ~{sample} -e 'GT="RR"||GT="mis"' ~{vep_annotated_vcf} | bcftools +split-vep -A tab -f '%CHROM\t%POS\t%REF\t%ALT\t%FORMAT\t%CSQ\n' >> ~{fname}
     
     #RANKING AND FILTERING 
     [[ -f "~{fname}" ]] || { echo "ERROR: ${fname} not found" >&2; exit 1; }
