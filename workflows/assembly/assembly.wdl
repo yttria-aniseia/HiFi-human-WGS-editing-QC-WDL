@@ -1,5 +1,4 @@
-version 1.0
-
+version 1.1
 import "../wdl-common/wdl/structs.wdl"
 import "assembly_tasks.wdl" as assembly_tasks
 
@@ -50,6 +49,14 @@ workflow assembly {
       input_hap2_gfa            = hifiasm_assembly.input_2_asm,
       runtime_attributes = default_runtime_attributes
   }
+  call assembly_tasks.quast as quast {
+    input:
+      input_fa_1 = gfa_to_fa.fasta_hap1,
+      input_fa_2 = gfa_to_fa.fasta_hap2,
+      input_fa = bam_to_fasta.input_fasta, 
+      ref = ref_map["hg002_fasta"],
+      runtime_attributes = default_runtime_attributes
+  }
   call assembly_tasks.pav as pav {
     input:
       ref            = ref_map["hg002_fasta"],
@@ -82,7 +89,13 @@ workflow assembly {
     # hifiasm assembly outputs
     File asm_1 = hifiasm_assembly.input_1_asm
     File asm_2 = hifiasm_assembly.input_2_asm
+    File transposed_report = quast.transposed_report    
+    File icarus_html = quast.icarus_html
+    File report_html = quast.report_html
+    File report_pdf = quast.report_pdf
+    File report_txt = quast.report_txt
 
+    #Array[File] quast_output = quast.quast_output 
     # pav outputs
     File pav_vcf = select_first([pav.pav_vcf])
     File pav_vcf_index = select_first([pav.pav_vcf_index])

@@ -1,4 +1,4 @@
-version 1.0 
+version 1.1 
 
 # Use Severus to call SV
 task Severus_sv {

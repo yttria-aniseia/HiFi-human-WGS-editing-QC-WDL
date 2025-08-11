@@ -1,4 +1,4 @@
-version 1.0
+version 1.1
 
 
 
@@ -278,7 +278,7 @@ task prioritize_small_variants {
     Float file_size = ceil(size(vep_annotated_vcf, "GB") + 10)
     String fname = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + ".tsv"
     String fname2 = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_intogenCCG.tsv"
-    String fname_ranked = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_ranked.tsv"
+    String fname_ranked = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_ranked.tsvd
     String fname_filtered = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_filtered.tsv"
 
     command <<<
