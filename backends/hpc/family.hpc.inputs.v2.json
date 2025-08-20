@@ -1,0 +1,33 @@
+{
+  "humanwgs_family.family": {
+    "family_id": "FAM1",
+    "samples": [
+      {
+        "sample_id": "jax_kolf",
+        "hifi_reads": [
+            "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/inputs/m64119_220415_203938.hifi-reads.bam"
+        ],
+        "affected": false,
+        "sex": "MALE",
+        "father_id": "NA",
+        "mother_id": "NA"
+      },
+      {
+        "sample_id": "bc2092",
+        "hifi_reads": [
+            "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/inputs/m84251R1_250315_005627_s2.hifi_reads.bc2092.bam"
+        ],
+        "affected": false,
+        "sex": "MALE",
+        "father_id": "jax_kolf",
+        "mother_id": "NA"
+      } 
+    ]
+  },
+  "humanwgs_family.phenotypes": "NA",
+  "humanwgs_family.ref_map_file": "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/hifi-wdl-resources-v2/GRCh38.ref_map.v2p0p0.template.tsv",
+  "humanwgs_family.tertiary_map_file": "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/hifi-wdl-resources-v2/GRCh38.tertiary_map.v2p0p0.template.tsv",
+  "humanwgs_family.pharmcat_min_coverage": 1,
+  "humanwgs_family.backend": "HPC",
+  "humanwgs_family.preemptible": true
+}

@@ -1,3 +1,0 @@
-google/deepvariant:
-google/deepvariant:-gpu
-pgkb/pharmcat:
