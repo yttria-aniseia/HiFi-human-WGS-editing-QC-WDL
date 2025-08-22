@@ -13,6 +13,7 @@ import "../wdl-common/wdl/tasks/paraphase.wdl" as Paraphase
 import "../wdl-common/wdl/tasks/hificnv.wdl" as Hificnv
 import "../edit-qc/plot_hificnv.wdl" as plot_hificnv
 import "../edit-qc/samtools_aux.wdl" as Samtools_aux
+import "../edit-qc/mosdepth_himem.wdl" as Mosdepth_himem
 import "../wdl-common/wdl/workflows/get_pbsv_splits/get_pbsv_splits.wdl" as Pbsv_splits
 import "../assembly/assembly.wdl" as Assembly
 
@@ -129,7 +130,7 @@ workflow upstream {
   File aligned_bam_index_hg002 = select_first([samtools_merge_hg002.merged_bam_index, pbmm2_align_hg002.aligned_bam_index[0]])
 
   
-  call Mosdepth.mosdepth as mosdepth_hg002 {
+  call Mosdepth_himem.mosdepth as mosdepth_hg002 {
     input:
       sample_id          = sample_id,
       ref_name           = ref_map["hg002_name"],
@@ -363,8 +364,11 @@ workflow upstream {
     # hifiasm assembly outputs
     File asm_1 = assembly.asm_1
     File asm_2 = assembly.asm_2
-
-		File asm_quast = assembly.quast_output
+    File quast_transposed_report = assembly.transposed_report
+    File quast_icarus_html = assembly.icarus_html
+    File quast_report_html = assembly.report_html
+    File quast_report_pdf = assembly.report_pdf
+    File quast_report_txt = assembly.report_txt
 
     # pav outputs
     File pav_vcf = assembly.pav_vcf

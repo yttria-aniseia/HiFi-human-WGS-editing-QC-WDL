@@ -94,9 +94,6 @@ workflow assembly {
     File report_html = quast.report_html
     File report_pdf = quast.report_pdf
     File report_txt = quast.report_txt
-
-	# quast
-	File quast_output = quast.quast_output
 		
     # pav outputs
     File pav_vcf = select_first([pav.pav_vcf])

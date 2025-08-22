@@ -107,40 +107,6 @@ task gfa_to_fa {
 task quast {
     input {
         File input_fa_1       # haplotype 1 assembly
-        File input_fa_2       # haplotype 2 assembly
-        File input_fa         # full fasta before assembly
-        File ref
-        RuntimeAttributes runtime_attributes
-    }
-    Int threads = 32
-    Int mem_gb    = ceil(threads * 4)
-    Int disk_size = ceil(size(input_fa_1, "GB") * 3 + size(input_fa_2, "GB") + 70)
-
-    command <<<
-        set -euxo pipefail
-        name=$(basename "~{input_fa_1}" .asm.bp.hap1.p_ctg.fa)
-        quast ~{input_fa_1} ~{input_fa_2} --pacbio ~{input_fa} -r ~{ref} --threads ~{threads} --conserved-genes-finding -o ${name}_quast
-    >>>
-
-    output {
-        File quast_output = sub(basename(input_fa_1), "\\.asm.bp.hap1.p_ctg.fa$", "") + "_quast"
-    }
-    runtime {
-    docker: "quay.io/biocontainers/quast@sha256:a8d5771c90e4fb6daf32885c56ccece7523344c4e7cd02aa1601a75dff885c22"
-    cpu: threads
-    memory: mem_gb + " GB"
-    disk: disk_size + " GB"
-    disks: "local-disk " + disk_size + " HDD"
-    preemptible: runtime_attributes.preemptible_tries
-    maxRetries: runtime_attributes.max_retries
-    awsBatchRetryAttempts: runtime_attributes.max_retries  # !UnknownRuntimeKey
-    zones: runtime_attributes.zones
-    }
-}
-
-task quast {
-    input {
-        File input_fa_1       # haplotype 1 assembly
         File input_fa_2       # haplotype 2 assembly  
         File input_fa         # full fasta before assembly
         File ref
@@ -159,7 +125,7 @@ task quast {
     >>>
 
     output {
-        #File quast_output = sub(basename(input_fa_1), "\\.asm.bp.hap1.p_ctg.fa.gz$", "") + "_quast" 
+       #File quast_output = sub(basename(input_fa_1), "\\.asm.bp.hap1.p_ctg.fa.gz$", "") + "_quast" 
        # Array[File] quast_output = glob(name+"/**/*")
        #Directory quast_output = name + "_quast"
        File transposed_report = name + "/transposed_report.tsv"

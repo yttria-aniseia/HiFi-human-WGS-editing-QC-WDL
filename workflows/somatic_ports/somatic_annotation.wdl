@@ -279,7 +279,7 @@ task prioritize_small_variants {
     Float file_size = ceil(size(vep_annotated_vcf, "GB") + 10)
     String fname = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + ".tsv"
     String fname2 = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_intogenCCG.tsv"
-    String fname_ranked = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_ranked.tsvd
+    String fname_ranked = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_ranked.tsv"
     String fname_filtered = sub(basename(vep_annotated_vcf), "\\.vcf.gz", "") + "_filtered.tsv"
 
     command <<<
@@ -329,8 +329,6 @@ task prioritize_small_variants {
       NR==1 { print; next }
       ($col=="HIGH" || $col=="MODERATE")
     ' "~{fname_ranked}" > "~{fname_filtered}"
-
-
 
       
     >>>
