@@ -2,7 +2,7 @@
 # launch.sh: Automated launcher for HiFi human WGS family workflow
 # 
 # This script automates the setup and execution of the HiFi human WGS workflow
-# by copying input files to a local directory structure and generating the 
+# by copying input files to a local directory structure and generating the
 # appropriate inputs JSON file.
 
 # Usage:
@@ -21,33 +21,33 @@ set -euo pipefail
 
 # Check for required arguments
 if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 <input_config_json> [work_dir_name] [cache_dir] [tmp_dir] [miniwdl_cfg]" >&2
-    echo "" >&2
-    echo "Arguments:" >&2
-    echo "  input_config_json: JSON file with sample information and file paths" >&2
-    echo "  work_dir_name: Optional name for working directory (default: workflow_run_YYYYMMDD_HHMMSS)" >&2
-    echo "                 Examples: 'my_analysis', 'family_trio_2024', '/full/path/to/workdir'" >&2
-    echo "  cache_dir: Optional Apptainer cache directory (default: <work_dir>/miniwdl_cache)" >&2
-    echo "  tmp_dir: Optional Apptainer temp directory (default: <work_dir>/miniwdl_tmp)" >&2
-    echo "  miniwdl_cfg: Optional path to custom miniwdl.cfg (default: <repo_root>/miniwdl.cfg)" >&2
-    echo "" >&2
-    echo "Example input_config_json format:" >&2
-    echo '{' >&2
-    echo '  "humanwgs_family.family": {' >&2
-    echo '    "family_id": "FAM1",' >&2
-    echo '    "samples": [' >&2
-    echo '      {' >&2
-    echo '        "sample_id": "sample1",' >&2
-    echo '        "hifi_reads": ["/path/to/reads.bam"],' >&2
-    echo '        "sex": "MALE",' >&2
-    echo '        "affected": false' >&2
-    echo '      }' >&2
-    echo '    ]' >&2
-    echo '  },' >&2
-    echo '  "humanwgs_family.ref_map_file": "/path/to/ref_map.tsv",' >&2
-    echo '  "humanwgs_family.tertiary_map_file": "/path/to/tertiary_map.tsv"' >&2
-    echo '}' >&2
-    exit 1
+	# <<- here-document ignores leading tab, preserves spaces
+    cat >&2 <<- EOF
+	Usage: $0 <input_config_json> [work_dir_name] [cache_dir] [tmp_dir] [miniwdl_cfg]
+	Arguments:
+	  input_config_json: JSON file with sample information and file paths
+	  work_dir_name: Optional name for working directory (default: workflow_run_YYYYMMDD_HHMMSS)
+	                 Examples: 'my_analysis', 'family_trio_2024', '/full/path/to/workdir'
+	  cache_dir: Optional Apptainer cache directory (default: <work_dir>/miniwdl_cache)
+	  tmp_dir: Optional Apptainer temp directory (default: <work_dir>/miniwdl_tmp)
+	  miniwdl_cfg: Optional path to custom miniwdl.cfg (default: <repo_root>/miniwdl.cfg)
+	Example input_config_json format:
+	{
+	  "humanwgs_family.family": {
+	    "family_id": "FAM1",
+	    "samples": [
+	      {
+	        "sample_id": "sample1",
+	        "hifi_reads": ["/path/to/reads.bam"],
+	        "sex": "MALE",
+	        "affected": false
+	      }
+	    ]
+	  },
+	  "humanwgs_family.ref_map_file": "/path/to/ref_map.tsv",
+	  "humanwgs_family.tertiary_map_file": "/path/to/tertiary_map.tsv"
+	}
+	EOF
 fi
 
 # Get absolute paths before changing directories
