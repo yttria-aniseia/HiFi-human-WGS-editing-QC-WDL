@@ -48,6 +48,7 @@ echo "Starting AnnotSV suite download"
 wget https://github.com/lgmgeo/AnnotSV/raw/master/bin/INSTALL_annotations.sh
 echo "Install Script Sucessfully downloaded"
 echo "Starting AnnotSV cache download"
+sed -i 's/rm -r AnnotSV/rm -rf AnnotSV/' INSTALL_annotations.sh
 chmod +x INSTALL_annotations.sh
 bash INSTALL_annotations.sh
 echo "Finished download cache"
