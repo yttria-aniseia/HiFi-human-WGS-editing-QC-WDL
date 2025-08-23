@@ -105,15 +105,15 @@ workflow humanwgs_family {
     String? debug_version
     # Somatic Ports
     ## SV-calling
-    File trf_bed = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/human_GRCh38_no_alt_analysis_set.trf.bed"
-    File ref_bed = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/chr.bed"
-    File ref_gff = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/Homo_sapiens.GRCh38.112.chr.reformatted.gff3"
-    File control_vcf = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/severus.jasmine.AN10.AC4.nosample.vcf.gz"
-    File control_vcf_index = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/severus.jasmine.AN10.AC4.nosample.vcf.gz.tbi"
-    File severus_pon_tsv = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/PoN_1000G_hg38_extended.tsv.gz"
+    File trf_bed = "hifisomatic_resources/human_GRCh38_no_alt_analysis_set.trf.bed"
+    File ref_bed = "hifisomatic_resources/chr.bed"
+    File ref_gff = "hifisomatic_resources/Homo_sapiens.GRCh38.112.chr.reformatted.gff3"
+    File control_vcf = "hifisomatic_resources/severus.jasmine.AN10.AC4.nosample.vcf.gz"
+    File control_vcf_index = "hifisomatic_resources/severus.jasmine.AN10.AC4.nosample.vcf.gz.tbi"
+    File severus_pon_tsv = "PoN_1000G_hg38_extended.tsv.gz"
     ## Annotation 
-    File vep_cache = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/homo_sapiens_refseq_vep_112_GRCh38.tar.gz"
-    File annotsv_cache = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/annotsv_cache.tar.gz"
+    File vep_cache = "homo_sapiens_refseq_vep_112_GRCh38.tar.gz"
+    File annotsv_cache = "annotsv_cache.tar.gz"
   }
 
   call BackendConfiguration.backend_configuration {
