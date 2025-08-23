@@ -45,6 +45,7 @@ if [[ $# -lt 1 ]]; then
 	    ]
 	  },
 	  "humanwgs_family.ref_map_file": "/path/to/ref_map.tsv",
+	  "humanwgs_family.somatic_map_file": "/path/to/somatic_map.tsv",
 	  "humanwgs_family.tertiary_map_file": "/path/to/tertiary_map.tsv"
 	}
 	EOF
@@ -228,7 +229,7 @@ if "humanwgs_family.family" in config:
     new_config["humanwgs_family.family"] = new_family
 
 # Copy reference files if they exist locally
-ref_files = ["ref_map_file", "tertiary_map_file"]
+ref_files = ["ref_map_file", "somatic_map_file", "tertiary_map_file"]
 for ref_key in ref_files:
     full_key = f"humanwgs_family.{ref_key}"
     if full_key in config:
