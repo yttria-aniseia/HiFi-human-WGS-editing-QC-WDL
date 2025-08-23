@@ -115,9 +115,10 @@ task annotsv {
         AnnotSV --version
 
         tar -xzvf ~{annotsv_cache} -C annotsv_cache_dir/
+        AnnotSV_annotations=$(find annotsv_cache_dir/ -type d -name AnnotSV_annotations -print -quit)
 
         AnnotSV \
-            -annotationsDir annotsv_cache_dir/AnnotSV/ \
+            -annotationsDir "${AnnotSV_annotations}" \
             -SVinputFile tmp_processed.vcf \
             -outputDir . \
             -outputFile ~{sub(basename(sv_vcf), "\\.vcf.gz$", "")}.annotsv.tsv \

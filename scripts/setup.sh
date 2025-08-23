@@ -52,8 +52,7 @@ sed -i 's/rm -r AnnotSV/rm -rf AnnotSV/' INSTALL_annotations.sh
 chmod +x INSTALL_annotations.sh
 bash INSTALL_annotations.sh
 echo "Finished download cache"
-mv AnnotSV_annotations AnnotSV
-tar -czvf annotsv_cache.tar.gz AnnotSV
+tar -czvf annotsv_cache.tar.gz AnnotSV_annotations
 
 echo "Starting VEP suite download"
 wget https://ftp.ensembl.org/pub/release-112/variation/indexed_vep_cache/homo_sapiens_refseq_vep_112_GRCh38.tar.gz
