@@ -246,21 +246,21 @@ workflow humanwgs_family {
 
 
     if (!single_sample) {
-        call Bcftools.bcftools_merge as merge_small_variant_vcfs {
-          input:
-            vcfs               = downstream.phased_small_variant_vcf,
-            vcf_indices        = downstream.phased_small_variant_vcf_index,
-            out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.small_variants.phased",
-            runtime_attributes = default_runtime_attributes
-        }
+        # call Bcftools.bcftools_merge as merge_small_variant_vcfs {
+        #   input:
+        #     vcfs               = downstream.phased_small_variant_vcf,
+        #     vcf_indices        = downstream.phased_small_variant_vcf_index,
+        #     out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.small_variants.phased",
+        #     runtime_attributes = default_runtime_attributes
+        # }
 
-        call Bcftools.bcftools_merge as merge_sv_vcfs {
-          input:
-            vcfs               = downstream.phased_sv_vcf,
-            vcf_indices        = downstream.phased_sv_vcf_index,
-            out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.structural_variants.phased",
-            runtime_attributes = default_runtime_attributes
-        }
+        # call Bcftools.bcftools_merge as merge_sv_vcfs {
+        #   input:
+        #     vcfs               = downstream.phased_sv_vcf,
+        #     vcf_indices        = downstream.phased_sv_vcf_index,
+        #     out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.structural_variants.phased",
+        #     runtime_attributes = default_runtime_attributes
+        # }
 
         call Trgt.trgt_merge {
           input:
@@ -299,7 +299,7 @@ workflow humanwgs_family {
     Map[String, File] bam_files_by_id = as_map(zip(sid, downstream.merged_haplotagged_bam))
     Map[String, File] index_by_id = as_map(zip(sid, downstream.merged_haplotagged_bam_index))
     scatter (sample_index in range(length(family.samples))) {
-          # Sex matching, if sample is male, we use male parent, if female we use female parent. if no sex given for sample, use father sample by default. This is all in order of preference. Generally Prefer father_id if present, else use mother_id if present, else null unless  sample is Female
+      # Sex matching, if sample is male, we use male parent, if female we use female parent. if no sex given for sample, use father sample by default. This is all in order of preference. Generally Prefer father_id if present, else use mother_id if present, else null unless  sample is Female
       
       File? parental_bam = 
         if (family.samples[sample_index].sex == "MALE") then  
@@ -349,15 +349,15 @@ workflow humanwgs_family {
       call Somatic_calling.tabix_vcf as tabix_vcf {
        input:
          vcf        = select_first([phased_severus.output_vcf]),
-         contig_bed = somatic_map["ref_bed"],                          # !FileCoercion
+         contig_bed = somatic_map["ref_bed"],                                   # !FileCoercion
          threads    = 2
       } 
       call Somatic_calling.svpack_filter_annotated as svpack_filter_annotated {
        input:
          sv_vcf                 = tabix_vcf.output_vcf,
-         population_vcfs        = [somatic_map["control_vcf"]],           # !FileCoercion
-         population_vcf_indices = [somatic_map["control_vcf_index"]],     # !FileCoercion
-         gff                    = somatic_map["ref_gff"]                   # !FileCoercion
+         population_vcfs        = [somatic_map["control_vcf"]],                 # !FileCoercion
+         population_vcf_indices = [somatic_map["control_vcf_index"]],           # !FileCoercion
+         gff                    = somatic_map["ref_gff"]                        # !FileCoercion
       }
       call Somatic_calling.recover_mate_bnd as recover_mate_bnd {
        input:
@@ -368,8 +368,8 @@ workflow humanwgs_family {
 
       call Somatic_annotation.vep_annotate as annotateGermline {
        input:
-          input_vcf           = select_first([merge_small_variant_vcfs.merged_vcf, downstream.phased_small_variant_vcf[sample_index]]),
-          vep_cache           = somatic_map["vep_cache"],                # !FileCoercion
+          input_vcf           = downstream.phased_small_variant_vcf[sample_index],
+          vep_cache           = somatic_map["vep_cache"],                       # !FileCoercion
           ref_fasta           = ref_map["fasta"],
           ref_fasta_index     = ref_map["fasta_index"],
           threads             = 16
@@ -378,9 +378,9 @@ workflow humanwgs_family {
 
       call Somatic_annotation.annotsv as annotateSV {
           input: 
-              sv_vcf        = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf[sample_index]]),
-              sv_vcf_index  = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index[sample_index]]),
-              annotsv_cache = somatic_map["annotsv_cache"],           # !FileCoercion  
+              sv_vcf        = downstream.phased_sv_vcf[sample_index],
+              sv_vcf_index  = downstream.phased_sv_vcf_index[sample_index],
+              annotsv_cache = somatic_map["annotsv_cache"],                     # !FileCoercion  
               threads       = 2
       }
 
@@ -388,8 +388,8 @@ workflow humanwgs_family {
       call Somatic_annotation.annotsv as annotateSeverusSVfiltered {
           input: 
               sv_vcf        = select_first([recover_mate_bnd.output_vcf]),
-              sv_vcf_index  = select_first([recover_mate_bnd.output_vcf_index ]),
-              annotsv_cache = somatic_map["annotsv_cache"],           # !FileCoercion  
+              sv_vcf_index  = select_first([recover_mate_bnd.output_vcf_index]),
+              annotsv_cache = somatic_map["annotsv_cache"],                     # !FileCoercion  
               threads       = 2
       }
 
