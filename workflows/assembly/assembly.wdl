@@ -30,7 +30,7 @@ workflow assembly {
 
   }
   String pav_sif_path = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/miniwdl_cache/singularity_cache/pav_latest.sif"
-  #scatter (hifi_read_bam in hifi_reads) {
+
   call assembly_tasks.samtools_bam_to_fasta as bam_to_fasta {
     input:
       input_bam          = hifi_read_bam,
@@ -45,8 +45,8 @@ workflow assembly {
   }
   call assembly_tasks.gfa_to_fa as gfa_to_fa {
     input:
-      input_hap1_gfa            = hifiasm_assembly.input_1_asm,
-      input_hap2_gfa            = hifiasm_assembly.input_2_asm,
+      input_hap1_gfa     = hifiasm_assembly.input_1_asm,
+      input_hap2_gfa     = hifiasm_assembly.input_2_asm,
       runtime_attributes = default_runtime_attributes
   }
   call assembly_tasks.quast as quast {
@@ -60,8 +60,8 @@ workflow assembly {
   call assembly_tasks.pav as pav {
     input:
       ref            = ref_map["hg002_fasta"],
-      ref_index            = ref_map["hg002_fasta_index"],
-      ref_bgzf_index            = ref_map["hg002_fasta_bgzf_index"],
+      ref_index      = ref_map["hg002_fasta_index"],
+      ref_bgzf_index = ref_map["hg002_fasta_bgzf_index"],
       input_fa_1     = gfa_to_fa.fasta_hap1,
       input_fa_2     = gfa_to_fa.fasta_hap2,
       sample_name    = sample_id,
@@ -75,25 +75,24 @@ workflow assembly {
       ref                = ref_map["fasta"],
       runtime_attributes = default_runtime_attributes
   }
-  call assembly_tasks.filter_liftover as filter_liftover {
+  call assembly_tasks.pav_sv_filter_size as pav_sv_filter_size {
     input:
       vcf                = liftover.lifted_vcf,
       runtime_attributes = default_runtime_attributes
   }
- #}
 
   output {
-    #bam to fasta outputs
+    # bam to fasta outputs
     File fasta_output = bam_to_fasta.input_fasta
     
     # hifiasm assembly outputs
     File asm_1 = hifiasm_assembly.input_1_asm
     File asm_2 = hifiasm_assembly.input_2_asm
     File transposed_report = quast.transposed_report    
-    File icarus_html = quast.icarus_html
-    File report_html = quast.report_html
-    File report_pdf = quast.report_pdf
-    File report_txt = quast.report_txt
+    File icarus_html       = quast.icarus_html
+    File report_html       = quast.report_html
+    File report_pdf        = quast.report_pdf
+    File report_txt        = quast.report_txt
 		
     # pav outputs
     File pav_vcf = select_first([pav.pav_vcf])
@@ -104,7 +103,7 @@ workflow assembly {
     File reject_vcf = liftover.reject_vcf 
 
     #LARGE SV FILTER OUTPUTS
-    File large_sv_filtered_vcf = filter_liftover.large_sv_filtered_vcf
-    File large_sv_filtered_vcf_index = filter_liftover.large_sv_filtered_vcf_index
+    File large_sv_filtered_vcf = pav_sv_filter_size.large_sv_filtered_vcf
+    File large_sv_filtered_vcf_index = pav_sv_filter_size.large_sv_filtered_vcf_index
   }
 }

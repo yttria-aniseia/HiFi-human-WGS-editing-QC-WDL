@@ -350,7 +350,7 @@ workflow humanwgs_family {
        input:
          vcf        = select_first([phased_severus.output_vcf]),
          contig_bed = somatic_map["ref_bed"],                          # !FileCoercion
-         threads    = 32
+         threads    = 2
       } 
       call Somatic_calling.svpack_filter_annotated as svpack_filter_annotated {
        input:
@@ -372,45 +372,45 @@ workflow humanwgs_family {
           vep_cache           = somatic_map["vep_cache"],                # !FileCoercion
           ref_fasta           = ref_map["fasta"],
           ref_fasta_index     = ref_map["fasta_index"],
-          threads             = 32
+          threads             = 16
       }
 
 
       call Somatic_annotation.annotsv as annotateSV {
           input: 
-              sv_vcf              = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf[sample_index]]),
-              sv_vcf_index        = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index[sample_index]]),
-              annotsv_cache       = somatic_map["annotsv_cache"],           # !FileCoercion  
-              threads             = 32
+              sv_vcf        = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf[sample_index]]),
+              sv_vcf_index  = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index[sample_index]]),
+              annotsv_cache = somatic_map["annotsv_cache"],           # !FileCoercion  
+              threads       = 2
       }
 
 
       call Somatic_annotation.annotsv as annotateSeverusSVfiltered {
           input: 
-              sv_vcf              = select_first([recover_mate_bnd.output_vcf]),
-              sv_vcf_index        = select_first([recover_mate_bnd.output_vcf_index ]),
-              annotsv_cache       = somatic_map["annotsv_cache"],           # !FileCoercion  
-              threads             = 32
+              sv_vcf        = select_first([recover_mate_bnd.output_vcf]),
+              sv_vcf_index  = select_first([recover_mate_bnd.output_vcf_index ]),
+              annotsv_cache = somatic_map["annotsv_cache"],           # !FileCoercion  
+              threads       = 2
       }
 
       call Somatic_annotation.prioritize_sv_intogen as prioritize_sv {
           input: 
-              annotSV_tsv             = annotateSV.annotsv_annotated_tsv,
-              threads                 = 32
+              annotSV_tsv   = annotateSV.annotsv_annotated_tsv,
+              threads       = 2
       } 
 
         
       call Somatic_annotation.prioritize_sv_intogen as prioritize_Severus {
           input: 
-              annotSV_tsv             = annotateSeverusSVfiltered.annotsv_annotated_tsv, 
-              threads                 = 32
+              annotSV_tsv   = annotateSeverusSVfiltered.annotsv_annotated_tsv, 
+              threads       = 2
       } 
 
       call Somatic_annotation.prioritize_small_variants as prioritizeSomatic {
           input: 
-              vep_annotated_vcf       = annotateGermline.vep_annotated_vcf, 
-              threads                 = 32,
-              sample                  = family.samples[sample_index].sample_id
+              vep_annotated_vcf   = annotateGermline.vep_annotated_vcf, 
+              threads             = 2,
+              sample              = family.samples[sample_index].sample_id
       }
     }
   }
@@ -572,7 +572,7 @@ workflow humanwgs_family {
     File? joint_trgt_vcf_index           = trgt_merge.merged_vcf_index
 
     # tertiary analysis outputs
-    File? pedigree                                      = write_ped_phrank.pedigree
+    File? pedigree                       = write_ped_phrank.pedigree
 
     # Somatic SV calling 
     Array[File] Severus_somatic_vcf                           = select_all(select_first([phased_severus.output_vcf]))
@@ -582,8 +582,8 @@ workflow humanwgs_family {
     Array[File] Severus_cluster_plots                         = select_all(select_first([phased_severus.output_somatic_sv_plots]))
 
     Array[File] Severus_tabix_vcf                             = select_first([tabix_vcf.output_vcf])
-    Array[File] Severus_filtered_vcf = select_first([recover_mate_bnd.output_vcf])
-    Array[File] Severus_filtered_vcf_index = select_first([recover_mate_bnd.output_vcf_index])
+    Array[File] Severus_filtered_vcf                          = select_first([recover_mate_bnd.output_vcf])
+    Array[File] Severus_filtered_vcf_index                    = select_first([recover_mate_bnd.output_vcf_index])
   
     # Somatic annotation analysis outputs
     Array[File] vep_annotated_vcf                             = select_first([annotateGermline.vep_annotated_vcf])
@@ -595,6 +595,7 @@ workflow humanwgs_family {
 
     Array[File]? small_variant_tsv_annotated                  = prioritizeSomatic.vep_annotated_tsv
     Array[File]? small_variant_tsv_annotated_ranked           = prioritizeSomatic.vep_annotated_ranked_tsv
+    # wrong output due to not splitting to samples
     Array[File]? small_variant_tsv_annotated_filtered         = prioritizeSomatic.vep_annotated_filtered_tsv
 
     #Array[File]? small_variant_tsv_CCG                        = prioritizeSomatic.vep_annotated_tsv_intogenCCG

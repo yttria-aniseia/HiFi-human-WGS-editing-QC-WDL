@@ -68,7 +68,7 @@ task tabix_vcf {
   input {
     File vcf
     File contig_bed
-    Int threads
+    Int threads = 2
   }
 
   Float file_size = ceil(size(vcf, "GB") + size(contig_bed, "GB") + 10)
@@ -235,8 +235,8 @@ task recover_mate_bnd {
 
   runtime {
     docker: "quay.io/biocontainers/bcftools:1.17--h3cc50cf_1"
-    cpu: 4
-    memory: "16 GB"
+    cpu: 2
+    memory: "8 GB"
     disk: file_size + " GB"
     maxRetries: 2
     preemptible: 1

@@ -9,7 +9,8 @@ task vep_annotate {
         File? vep_cache
         File ref_fasta
         File ref_fasta_index
-        Int threads
+        Int threads = 16
+        Int mem_gb  = 8
     }
 
     Float file_size = ceil(size(input_vcf, "GB") + size(vep_cache, "GB") + size(ref_fasta, "GB") + size(ref_fasta_index, "GB"))
@@ -60,7 +61,7 @@ task vep_annotate {
     runtime {
         docker: "ensemblorg/ensembl-vep@sha256:e7612ab7c2923f2b9a78592b939e74874cd29f7494d70ee7135c8303841b03a8"
         cpu: threads
-        memory: "~{threads * 4} GB"
+        memory: "~{mem_gb} GB"
         disk: file_size + " GB"
         maxRetries: 2
         preemptible: 1
@@ -72,7 +73,7 @@ task annotsv {
         File sv_vcf
         File sv_vcf_index
         File? annotsv_cache
-        Int threads
+        Int threads = 2
     }
 
     Float file_size = ceil(size(sv_vcf, "GB") + size(annotsv_cache, "GB"))
@@ -157,7 +158,7 @@ task annotsv {
     runtime {
         docker: "quay.io/biocontainers/annotsv@sha256:09cc20a86b61fc44b7c1a5d90af8a88fb5e8cacbe56c9938301f2c5fc6ae71fb"
         cpu: threads
-        memory: "~{threads * 4} GB"
+        memory: "~{threads * 2} GB"
         disk: file_size + " GB"
         maxRetries: 2
         preemptible: 1
@@ -207,7 +208,7 @@ task chord_hrd {
 task prioritize_sv_intogen {
     input {
         File annotSV_tsv
-        Int threads
+        Int threads = 2
     }
 
     Float file_size = ceil(size(annotSV_tsv, "GB") + 10)
@@ -262,7 +263,7 @@ task prioritize_sv_intogen {
     runtime {
         docker: "quay.io/pacbio/somatic_general_tools@sha256:a25a2e62b88c73fa3c18a0297654420a4675224eb0cf39fa4192f8a1e92b30d6"
         cpu: threads
-        memory: "~{threads * 4} GB"
+        memory: "~{threads * 2} GB"
         disk: file_size + " GB"
         maxRetries: 2
         preemptible: 1
@@ -272,7 +273,7 @@ task prioritize_sv_intogen {
 task prioritize_small_variants {
     input {
         File vep_annotated_vcf
-        Int threads
+        Int threads = 2
         String sample
         String pname="sample"
     }
@@ -294,23 +295,23 @@ task prioritize_small_variants {
     #RANKING AND FILTERING 
     [[ -f "~{fname}" ]] || { echo "ERROR: ${fname} not found" >&2; exit 1; }
 
-    # 2) find SYMBOL column index (1‐based)
+    # 2) find IMPACT column index (1‐based)
     IFS=$'\t' read -r -a hdr < <(head -n1 "~{fname}")
-    symcol=0
+    impactcol=0
     for i in "${!hdr[@]}"; do
-      [[ "${hdr[i]}" == "SYMBOL" ]] && { symcol=$((i+1)); break; }
+      [[ "${hdr[i]}" == "IMPACT" ]] && { impactcol=$((i+1)); break; }
     done
-    [[ $symcol -gt 0 ]] || { echo "ERROR: SYMBOL column not found" >&2; exit 1; }
+    [[ $impactcol -gt 0 ]] || { echo "ERROR: IMPACT column not found" >&2; exit 1; }
 
     # 3) write header unchanged
     head -n1 "~{fname}" > "~{fname_ranked}"
     
     # 4) rank & sort, then strip the rank in awk (no cut!)
     tail -n +2 "~{fname}" \
-      | awk -F $'\t' -v OFS=$'\t' -v col="$symcol" '
+      | awk -F $'\t' -v OFS=$'\t' -v impact="$impactcol" '
           {
             # compute numeric rank
-            r = ($col=="HIGH"     ? 1 : $col=="MODERATE" ? 2 : $col=="LOW"      ? 3 : $col=="MODIFIER" ? 4 : 5)
+            r = ($impact=="HIGH"     ? 1 : $impact=="MODERATE" ? 2 : $impact=="LOW"      ? 3 : $impact=="MODIFIER" ? 4 : 5)
             # prepend it to the line
             print r, $0
           }
@@ -326,9 +327,9 @@ task prioritize_small_variants {
         ' \
       >> "~{fname_ranked}"
     # 5) filter HIGH or MODERATE into the final file
-    awk -F $'\t' -v OFS=$'\t' -v col="$symcol" '
+    awk -F $'\t' -v OFS=$'\t' -v impact="$impactcol" '
       NR==1 { print; next }
-      ($col=="HIGH" || $col=="MODERATE")
+      ($impact=="HIGH" || $impact=="MODERATE")
     ' "~{fname_ranked}" > "~{fname_filtered}"
 
       
@@ -344,7 +345,7 @@ task prioritize_small_variants {
     runtime {
         docker: "quay.io/pacbio/somatic_general_tools@sha256:a25a2e62b88c73fa3c18a0297654420a4675224eb0cf39fa4192f8a1e92b30d6"
         cpu: threads
-        memory: "~{threads * 4} GB"
+        memory: "~{threads * 2} GB"
         disk: file_size + " GB"
         maxRetries: 2
         preemptible: 1
