@@ -10,6 +10,7 @@ import "wdl-common/wdl/tasks/write_ped_phrank.wdl" as Write_ped_phrank
 import "tertiary/tertiary.wdl" as TertiaryAnalysis
 import "wdl-common/wdl/tasks/utilities.wdl" as Utilities
 import "edit-qc/bcftools_aux.wdl" as Bcftools_aux
+import "edit-qc/truvari_parent_filter.wdl" as TruvariParentFilter
 import "somatic_ports/somatic_annotation.wdl" as Somatic_annotation
 import "somatic_ports/somatic_calling.wdl" as Somatic_calling
 workflow humanwgs_family {
@@ -246,21 +247,21 @@ workflow humanwgs_family {
 
 
     if (!single_sample) {
-        # call Bcftools.bcftools_merge as merge_small_variant_vcfs {
-        #   input:
-        #     vcfs               = downstream.phased_small_variant_vcf,
-        #     vcf_indices        = downstream.phased_small_variant_vcf_index,
-        #     out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.small_variants.phased",
-        #     runtime_attributes = default_runtime_attributes
-        # }
+        call Bcftools.bcftools_merge as merge_small_variant_vcfs {
+          input:
+            vcfs               = downstream.phased_small_variant_vcf,
+            vcf_indices        = downstream.phased_small_variant_vcf_index,
+            out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.small_variants.phased",
+            runtime_attributes = default_runtime_attributes
+        }
 
-        # call Bcftools.bcftools_merge as merge_sv_vcfs {
-        #   input:
-        #     vcfs               = downstream.phased_sv_vcf,
-        #     vcf_indices        = downstream.phased_sv_vcf_index,
-        #     out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.structural_variants.phased",
-        #     runtime_attributes = default_runtime_attributes
-        # }
+        call Bcftools.bcftools_merge as merge_sv_vcfs {
+          input:
+            vcfs               = downstream.phased_sv_vcf,
+            vcf_indices        = downstream.phased_sv_vcf_index,
+            out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.structural_variants.phased",
+            runtime_attributes = default_runtime_attributes
+        }
 
         call Trgt.trgt_merge {
           input:
@@ -279,8 +280,9 @@ workflow humanwgs_family {
   #                  SEVERUS & ANNOTATION                     #
   #############################################################
 
+  if (defined(tertiary_map_file) && defined(somatic_map_file)) {
+    Map [String, String] somatic_map = read_map(somatic_map_file)
 
-  if (defined(tertiary_map_file)) { 
     scatter (sample in family.samples) {
       Array[File] hifi_reads = sample.hifi_reads
     }
@@ -294,43 +296,58 @@ workflow humanwgs_family {
     }
 
     ####################################
-    # 3a)         SEVERUS RUN (WT):    #
+    # 3a)      SEVERUS & ANNOTATION    #
     ####################################
     Map[String, File] bam_files_by_id = as_map(zip(sid, downstream.merged_haplotagged_bam))
-    Map[String, File] index_by_id = as_map(zip(sid, downstream.merged_haplotagged_bam_index))
+    Map[String, File] bam_index_by_id = as_map(zip(sid, downstream.merged_haplotagged_bam_index))
+    Map[String, Int] sidx_by_id = as_map(zip(sid, range(length(sid))))
+
+
+    call Somatic_annotation.vep_annotate as annotateGermline {
+      input:
+      input_vcf           = select_first([merge_small_variant_vcfs.merged_vcf, downstream.phased_small_variant_vcf]),
+      vep_cache           = somatic_map["vep_cache"],                           # !FileCoercion
+      ref_fasta           = ref_map["fasta"],
+      ref_fasta_index     = ref_map["fasta_index"],
+      threads             = 16
+    }
+
+    call TruvariParentFilter.truvari_collapse_consistency as truvari_consistency_sv {
+      input:
+      merged_vcf         = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf]),
+      merged_vcf_index   = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index]),
+      sample_ids         = sid,
+      out_prefix         = "~{family.family_id}.sv.parent_filter",
+      runtime_attributes = default_runtime_attributes
+    }
+
+    call TruvariParentFilter.truvari_collapse_consistency as truvari_consistency_small_variants {
+      input:
+      merged_vcf         = annotateGermline.annotated_vcf,
+      merged_vcf_index   = annotateGermline.annotated_vcf_index,
+      sample_ids         = sid,
+      out_prefix         = "~{family.family_id}.small_variants.parent_filter",
+      runtime_attributes = default_runtime_attributes
+    }
+    
     scatter (sample_index in range(length(family.samples))) {
-      # Sex matching, if sample is male, we use male parent, if female we use female parent. if no sex given for sample, use father sample by default. This is all in order of preference. Generally Prefer father_id if present, else use mother_id if present, else null unless  sample is Female
-      
-      File? parental_bam = 
+
+      # Sex matching, if sample is male, we use male parent, if female we use female parent.
+      # if no sex given for sample, use father sample by default.
+      # Generally Prefer father_id if present, else use mother_id if present, else null unless sample is Female
+      String? parent_id =
         if (family.samples[sample_index].sex == "MALE") then  
-            if (defined(family.samples[sample_index].father_id)) then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
-            else if (defined(family.samples[sample_index].mother_id)) then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
+            if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+            else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
             else None 
         else if (family.samples[sample_index].sex == "FEMALE") then  
-            if (defined(family.samples[sample_index].mother_id)) then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
-            else if (defined(family.samples[sample_index].father_id)) then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
+            if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
+            else if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
             else None 
         else            
-            if (defined(family.samples[sample_index].father_id)) then bam_files_by_id[select_first([family.samples[sample_index].father_id])]
-            else if (defined(family.samples[sample_index].mother_id)) then bam_files_by_id[select_first([family.samples[sample_index].mother_id])]
+            if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+            else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
             else None 
-
-      File? parental_bam_index = 
-        if (family.samples[sample_index].sex == "MALE") then  
-            if (defined(family.samples[sample_index].father_id)) then index_by_id[select_first([family.samples[sample_index].father_id])]
-            else if (defined(family.samples[sample_index].mother_id)) then index_by_id[select_first([family.samples[sample_index].mother_id])]
-            else None  
-        else if (family.samples[sample_index].sex == "FEMALE") then  
-            if (defined(family.samples[sample_index].mother_id)) then index_by_id[select_first([family.samples[sample_index].mother_id])]
-            else if (defined(family.samples[sample_index].father_id)) then index_by_id[select_first([family.samples[sample_index].father_id])]
-            else None 
-        else  
-            if (defined(family.samples[sample_index].father_id)) then index_by_id[select_first([family.samples[sample_index].father_id])]
-            else if (defined(family.samples[sample_index].mother_id)) then index_by_id[select_first([family.samples[sample_index].mother_id])]
-            else None 
-
-
-      Map [String, String] somatic_map = read_map(somatic_map_file)
 
       call Somatic_calling.Severus_sv as phased_severus {
             input:
@@ -344,8 +361,6 @@ workflow humanwgs_family {
                 min_supp_reads     = 3,
                 PON_tsv            = somatic_map["severus_pon_tsv"]             # !FileCoercion
       }
-
-
       call Somatic_calling.tabix_vcf as tabix_vcf {
        input:
          vcf        = select_first([phased_severus.output_vcf]),
@@ -364,54 +379,74 @@ workflow humanwgs_family {
          sv_vcf_original    = select_first([phased_severus.output_vcf]),
          sv_svpack_filtered = svpack_filter_annotated.output_vcf
       }
-
-
-      call Somatic_annotation.vep_annotate as annotateGermline {
-       input:
-          input_vcf           = downstream.phased_small_variant_vcf[sample_index],
-          vep_cache           = somatic_map["vep_cache"],                       # !FileCoercion
-          ref_fasta           = ref_map["fasta"],
-          ref_fasta_index     = ref_map["fasta_index"],
-          threads             = 16
-      }
-
-
-      call Somatic_annotation.annotsv as annotateSV {
-          input: 
-              sv_vcf        = downstream.phased_sv_vcf[sample_index],
-              sv_vcf_index  = downstream.phased_sv_vcf_index[sample_index],
-              annotsv_cache = somatic_map["annotsv_cache"],                     # !FileCoercion  
-              threads       = 2
-      }
-
-
       call Somatic_annotation.annotsv as annotateSeverusSVfiltered {
-          input: 
-              sv_vcf        = select_first([recover_mate_bnd.output_vcf]),
-              sv_vcf_index  = select_first([recover_mate_bnd.output_vcf_index]),
-              annotsv_cache = somatic_map["annotsv_cache"],                     # !FileCoercion  
-              threads       = 2
+        input: 
+        sv_vcf        = select_first([recover_mate_bnd.output_vcf]),
+        sv_vcf_index  = select_first([recover_mate_bnd.output_vcf_index]),
+        annotsv_cache = somatic_map["annotsv_cache"],                           # !FileCoercion  
+        threads       = 2
       }
 
-      call Somatic_annotation.prioritize_sv_intogen as prioritize_sv {
-          input: 
-              annotSV_tsv   = annotateSV.annotsv_annotated_tsv,
-              threads       = 2
-      } 
+      if (defined(parent_id)) {
+        String parent_id_ok = select_first([parent_id])
+        String parent_index = sidx_by_id[parent_id_ok]
 
+        File parental_bam = bam_files_by_id[parent_id_ok]
+        File parental_bam_index = bam_index_by_id[parent_id_ok]
+
+        # parent filtering
+        call TruvariParentFilter.filter_parent_variants as filter_small_variants {
+          input:
+            sample_vcf              = truvari_consistency_small_variants.split_vcfs[sample_index],
+            sample_vcf_index        = truvari_consistency_small_variants.split_vcfs_index[sample_index],
+            truvari_consistency_tsv = truvari_consistency_small_variants.truvari_consistency_tsv,
+            sample_id               = family.samples[sample_index].sample_id,
+            parent_id               = parent_id_ok,
+            sample_index            = sample_index,
+            parent_index            = parent_index,
+            runtime_attributes      = default_runtime_attributes
+        }
+
+        call TruvariParentFilter.filter_parent_variants as filter_sv {
+          input:
+            sample_vcf              = truvari_consistency_sv.split_vcfs[sample_index],
+            sample_vcf_index        = truvari_consistency_sv.split_vcfs_index[sample_index],
+            truvari_consistency_tsv = truvari_consistency_sv.truvari_consistency_tsv,
+            sample_id               = family.samples[sample_index].sample_id,
+            parent_id               = parent_id_ok,
+            sample_index            = sample_index,
+            parent_index            = parent_index,
+            runtime_attributes      = default_runtime_attributes
+        }
+
+        # AnnotSV after split because we need its tsv conversion
+        call Somatic_annotation.annotsv as annotateSV {
+          input: 
+            sv_vcf        = filter_sv.filtered_vcf,
+            sv_vcf_index  = filter_sv.filtered_vcf_index,
+            annotsv_cache = somatic_map["annotsv_cache"],                             # !FileCoercion  
+            threads       = 2
+        }
         
+        call Somatic_annotation.prioritize_small_variants as prioritizeSomatic {
+          input: 
+            vep_annotated_vcf   = filter_small_variants.filtered_vcf,
+            threads             = 2,
+            sample              = family.samples[sample_index].sample_id
+        }
+        call Somatic_annotation.prioritize_sv_intogen as prioritize_sv {
+          input: 
+            annotSV_tsv   = annotateSV.annotated_tsv,
+            threads       = 2
+        }
+      }
+
       call Somatic_annotation.prioritize_sv_intogen as prioritize_Severus {
           input: 
-              annotSV_tsv   = annotateSeverusSVfiltered.annotsv_annotated_tsv, 
+              annotSV_tsv   = annotateSeverusSVfiltered.annotated_tsv, 
               threads       = 2
       } 
 
-      call Somatic_annotation.prioritize_small_variants as prioritizeSomatic {
-          input: 
-              vep_annotated_vcf   = annotateGermline.vep_annotated_vcf, 
-              threads             = 2,
-              sample              = family.samples[sample_index].sample_id
-      }
     }
   }
 
@@ -571,6 +606,12 @@ workflow humanwgs_family {
     File? joint_trgt_vcf                 = trgt_merge.merged_vcf
     File? joint_trgt_vcf_index           = trgt_merge.merged_vcf_index
 
+    # Parent filtering outputs
+    File? small_variant_consistency_tsv = truvari_consistency_small_variants.truvari_consistency_tsv
+    File? sv_consistency_tsv             = truvari_consistency_sv.truvari_consistency_tsv
+    Array[File?]? parent_filtered_small_variant_vcf = filter_small_variants.filtered_vcf
+    Array[File?]? parent_filtered_sv_vcf            = filter_sv.filtered_vcf
+
     # tertiary analysis outputs
     File? pedigree                       = write_ped_phrank.pedigree
 
@@ -586,17 +627,17 @@ workflow humanwgs_family {
     Array[File] Severus_filtered_vcf_index                    = select_first([recover_mate_bnd.output_vcf_index])
   
     # Somatic annotation analysis outputs
-    Array[File] vep_annotated_vcf                             = select_first([annotateGermline.vep_annotated_vcf])
-    Array[File] annotsv_annotated_tsv                         = select_first([annotateSV.annotsv_annotated_tsv])
-    Array[File] Severus_annotated_tsv                         = select_first([annotateSeverusSVfiltered.annotsv_annotated_tsv])
-    Array[File] annotsv_annotated_tsv_intogen                 = select_first([prioritize_sv.annotSV_intogen_tsv])
+    File? vep_annotated_vcf                                   = annotateGermline.annotated_vcf
+    Array[File?]? annotsv_annotated_tsv                       = annotateSV.annotated_tsv
+    Array[File] Severus_annotated_tsv                         = select_first([annotateSeverusSVfiltered.annotated_tsv])
+    Array[File?] annotsv_annotated_tsv_intogen                = select_first([prioritize_sv.annotSV_intogen_tsv])
     Array[File] Severus_annotated_tsv_intogen                 = select_first([prioritize_Severus.annotSV_intogen_tsv])
  
 
-    Array[File]? small_variant_tsv_annotated                  = prioritizeSomatic.vep_annotated_tsv
-    Array[File]? small_variant_tsv_annotated_ranked           = prioritizeSomatic.vep_annotated_ranked_tsv
+    Array[File?]? small_variant_tsv_annotated                 = prioritizeSomatic.vep_annotated_tsv
+    Array[File?]? small_variant_tsv_annotated_ranked          = prioritizeSomatic.vep_annotated_ranked_tsv
     # wrong output due to not splitting to samples
-    Array[File]? small_variant_tsv_annotated_filtered         = prioritizeSomatic.vep_annotated_filtered_tsv
+    Array[File?]? small_variant_tsv_annotated_filtered        = prioritizeSomatic.vep_annotated_filtered_tsv
 
     #Array[File]? small_variant_tsv_CCG                        = prioritizeSomatic.vep_annotated_tsv_intogenCCG
 

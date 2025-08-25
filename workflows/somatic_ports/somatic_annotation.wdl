@@ -14,7 +14,8 @@ task vep_annotate {
     }
 
     Float file_size = ceil(size(input_vcf, "GB") + size(vep_cache, "GB") + size(ref_fasta, "GB") + size(ref_fasta_index, "GB"))
-
+    String vep_annotated_vcf = sub(basename(input_vcf), "\\.vcf.gz$", "") + ".vep.vcf.gz"
+    
     command <<<
         set -euxo pipefail
 
@@ -47,15 +48,17 @@ task vep_annotate {
             --everything \
             --compress_output bgzip \
             -i ~{input_vcf} \
-            -o ~{sub(basename(input_vcf), "\\.vcf.gz$", "")}.vep.vcf.gz
+            -o ~{vep_annotated_vcf}
 
         # Delete cache after annotation
         rm -rf vep_data/
 
+        tabix "~{vep_annotated_vcf}"
     >>>
 
     output {
-        File vep_annotated_vcf = sub(basename(input_vcf), "\\.vcf.gz$", "") + ".vep.vcf.gz"
+        File annotated_vcf = "~{vep_annotated_vcf}"
+        File annotated_vcf_index = "~{vep_annotated_vcf}.tbi"
     }
 
     runtime {
@@ -77,6 +80,8 @@ task annotsv {
     }
 
     Float file_size = ceil(size(sv_vcf, "GB") + size(annotsv_cache, "GB"))
+    #String annotsv_annotated_vcf = sub(basename(sv_vcf), "\\.vcf.gz$", "") + ".annotsv.vcf"
+    String annotsv_annotated_tsv = sub(basename(sv_vcf), "\\.vcf.gz$", "") + ".annotsv.tsv"
 
     command <<<
         set -euxo pipefail
@@ -122,37 +127,22 @@ task annotsv {
             -annotationsDir "${AnnotSV_annotations}" \
             -SVinputFile tmp_processed.vcf \
             -outputDir . \
-            -outputFile ~{sub(basename(sv_vcf), "\\.vcf.gz$", "")}.annotsv.tsv \
+            -outputFile "~{annotsv_annotated_tsv}" \
             -SVinputInfo 1 \
             -genomeBuild GRCh38
 
         # Delete cache after annotation
         rm -rf annotsv_cache_dir/
-        (head -1 ~{sub(basename(sv_vcf), "\\.vcf.gz$", "")}.annotsv.tsv  | awk -F '\t' -v OFS='\t' '{print $1,$2,$3,$5,$6,$14,$26,$54,$81,$104,$106,$107,$118}' && 
-         tail -n +2 ~{sub(basename(sv_vcf), "\\.vcf.gz$", "")}.annotsv.tsv | 
-         awk -F '\t' -v OFS='\t' '
-         {
-            split($107, classifications, /;/);
-            max_priority = 0;
-            for (i in classifications) {
-                gsub(/^[ \t]+|[ \t]+$/, "", classifications[i]);
-                if (classifications[i] == "Definitive") curr_priority = 4;
-                else if (classifications[i] == "Strong") curr_priority = 3;
-                else if (classifications[i] == "Moderate") curr_priority = 2;
-                else if (classifications[i] == "Supportive") curr_priority = 1;
-                else curr_priority = 0;
-                if (curr_priority > max_priority) max_priority = curr_priority;
-            }
-            print max_priority, ($118+0), $1,$2,$3,$5,$6,$14,$26,$54,$81,$104,$106,$107,$118
-         }' | 
-         sort -s -k1,1nr -k2,2nr | 
-         cut -f3-
-        ) > ~{sub(basename(sv_vcf), "\\.vcf.gz$", "")}.ranked.annotsv.tsv
+
+        #bgzip "{annotsv_annotated_vcf}"
+        #bcftools index "{annotsv_annotated_vcf}.gz"
     >>>
 
     output {
-        File annotsv_annotated_tsv = sub(basename(sv_vcf), "\\.vcf.gz$", "") + ".annotsv.tsv"
-        File ranked_annotsv_annotated_tsv = sub(basename(sv_vcf), "\\.vcf.gz$", "") + ".ranked.annotsv.tsv"
+        File annotated_tsv = "~{annotsv_annotated_tsv}"
+        #File annotated_vcf = "~{annotsv_annotated_vcf}.gz"
+        #File annotated_vcf_index = "~{annotsv_annotated_vcf}.gz.csi"
+        #File ranked_annotsv_annotated_tsv = sub(basename(sv_vcf), "\\.vcf.gz$", "") + ".ranked.annotsv.tsv"
     }
 
     runtime {
@@ -219,7 +209,7 @@ task prioritize_sv_intogen {
     csvtk version
 
     # Remove any quote from the file
-    sed "s/\"//g" ~{annotSV_tsv} > ~{basename(annotSV_tsv)}_noquote.tsv
+    sed "s/\"//g" ~{annotSV_tsv} > ~{basename(annotSV_tsv)}_noquote.vcf
 
     csvtk join -t \
         ~{basename(annotSV_tsv)}_noquote.tsv \
@@ -290,7 +280,7 @@ task prioritize_small_variants {
     csvtk version
 
     echo -e "CHROM\tPOS\tREF\tALT\tFORMAT\t~{pname}\t$(bcftools +split-vep ~{vep_annotated_vcf} -l | cut -f2 | tr '\n' '\t' | sed 's/\t$//g')" > ~{fname}
-     bcftools view -s ~{sample} -e 'GT="RR"||GT="mis"' ~{vep_annotated_vcf} | bcftools +split-vep -A tab -f '%CHROM\t%POS\t%REF\t%ALT\t%FORMAT\t%CSQ\n' >> ~{fname}
+     bcftools view -s ~{sample} -e 'GT="ref"||GT="mis"' ~{vep_annotated_vcf} | bcftools +split-vep -A tab -f '%CHROM\t%POS\t%REF\t%ALT\t%FORMAT\t%CSQ\n' >> ~{fname}
     
     #RANKING AND FILTERING 
     [[ -f "~{fname}" ]] || { echo "ERROR: ${fname} not found" >&2; exit 1; }
@@ -331,8 +321,6 @@ task prioritize_small_variants {
       NR==1 { print; next }
       ($impact=="HIGH" || $impact=="MODERATE")
     ' "~{fname_ranked}" > "~{fname_filtered}"
-
-      
     >>>
 
     output {
