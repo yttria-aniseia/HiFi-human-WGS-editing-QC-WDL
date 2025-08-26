@@ -125,6 +125,7 @@ task annotsv {
 
         AnnotSV \
             -annotationsDir "${AnnotSV_annotations}" \
+            -annotationMode both \
             -SVinputFile tmp_processed.vcf \
             -outputDir . \
             -outputFile "~{annotsv_annotated_tsv}" \
@@ -133,20 +134,14 @@ task annotsv {
 
         # Delete cache after annotation
         rm -rf annotsv_cache_dir/
-
-        #bgzip "{annotsv_annotated_vcf}"
-        #bcftools index "{annotsv_annotated_vcf}.gz"
     >>>
 
     output {
         File annotated_tsv = "~{annotsv_annotated_tsv}"
-        #File annotated_vcf = "~{annotsv_annotated_vcf}.gz"
-        #File annotated_vcf_index = "~{annotsv_annotated_vcf}.gz.csi"
-        #File ranked_annotsv_annotated_tsv = sub(basename(sv_vcf), "\\.vcf.gz$", "") + ".ranked.annotsv.tsv"
     }
 
     runtime {
-        docker: "quay.io/biocontainers/annotsv@sha256:09cc20a86b61fc44b7c1a5d90af8a88fb5e8cacbe56c9938301f2c5fc6ae71fb"
+        docker: "quay.io/biocontainers/annotsv@sha256:d814365a1d81bca2b4690a6a8af316881587cadb38b3bb524ec8747380bc7a36"
         cpu: threads
         memory: "~{threads * 2} GB"
         disk: file_size + " GB"
@@ -202,52 +197,61 @@ task prioritize_sv_intogen {
     }
 
     Float file_size = ceil(size(annotSV_tsv, "GB") + 10)
-
+    String CCG_tsv_name = "~{sub(basename(annotSV_tsv), "\\.tsv$", "")}_CCG.tsv"
+    String CCG_ranked_tsv_name = "~{sub(basename(annotSV_tsv), "\\.tsv$", "")}_CCG.ranked.tsv"
+    String ranked_tsv_name = "~{sub(basename(annotSV_tsv), "\\.tsv$", "")}.ranked.tsv"
+    String ranked_concerning_tsv_name = "~{sub(basename(annotSV_tsv), "\\.tsv$", "")}.ranked_concerning.tsv"
+    
     command <<<
     set -euxo pipefail
     
     csvtk version
 
     # Remove any quote from the file
-    sed "s/\"//g" ~{annotSV_tsv} > ~{basename(annotSV_tsv)}_noquote.vcf
+    sed "s/\"//g" ~{annotSV_tsv} > ~{basename(annotSV_tsv)}_noquote.tsv
+
+    # ccg annotation only makes sense for split gene records from annotsv, but full usually better
+    csvtk filter2 -t -f '$Annotation_mode == "full"' \
+      ~{basename(annotSV_tsv)}_noquote.tsv > ~{basename(annotSV_tsv)}_full.tsv
+    csvtk filter2 -t -f '$Annotation_mode == "split"' \
+      ~{basename(annotSV_tsv)}_noquote.tsv > ~{basename(annotSV_tsv)}_split.tsv
 
     csvtk join -t \
-        ~{basename(annotSV_tsv)}_noquote.tsv \
-        /app/Compendium_Cancer_Genes.tsv \
-        -f "Gene_name;SYMBOL" |\
-            csvtk filter2 -t -f '$Annotation_mode == "split"' |\
-            csvtk summary -t -g "$(csvtk headers -t ~{annotSV_tsv} | tr '\n' ',' | sed 's/,$//g')" \
-                -f CANCER_TYPE:collapse,COHORT:collapse,TRANSCRIPT:collapse,MUTATIONS:collapse,ROLE:collapse,CGC_GENE:collapse,CGC_CANCER_GENE:collapse,DOMAINS:collapse,2D_CLUSTERS:collapse,3D_CLUSTERS:collapse -s ";" |\
-                sed 's/:collapse//g'  > ~{sub(basename(annotSV_tsv), "\\.tsv$", "")}_intogenCCG.tsv
+      ~{basename(annotSV_tsv)}_split.tsv \
+      /app/Compendium_Cancer_Genes.tsv \
+      -f "Gene_name;SYMBOL" |\
+        csvtk summary -t -g "$(csvtk headers -t ~{annotSV_tsv} | tr '\n' ',' | sed 's/,$//g')" \
+            -f CANCER_TYPE:collapse,COHORT:collapse,TRANSCRIPT:collapse,MUTATIONS:collapse,ROLE:collapse,CGC_GENE:collapse,CGC_CANCER_GENE:collapse,DOMAINS:collapse,2D_CLUSTERS:collapse,3D_CLUSTERS:collapse -s ";" |\
+        sed 's/:collapse//g' > ~{CCG_tsv_name}
 
     rm -f ~{basename(annotSV_tsv)}_noquote.tsv
 
-    (head -1 ~{sub(basename(annotSV_tsv), "\\.tsv$", "")}_intogenCCG.tsv | awk -F '\t' -v OFS='\t' '{print $1,$2,$3,$5,$6,$14,$26,$54,$81,$104,$106,$107,$118}' && 
-     tail -n +2 ~{sub(basename(annotSV_tsv), "\\.tsv$", "")}_intogenCCG.tsv | 
-     awk -F '\t' -v OFS='\t' '
-     {
-        split($107, classifications, /;/);
-        max_priority = 0;
-        for (i in classifications) {
-            gsub(/^[ \t]+|[ \t]+$/, "", classifications[i]);
-            if (classifications[i] == "Definitive") curr_priority = 4;
-            else if (classifications[i] == "Strong") curr_priority = 3;
-            else if (classifications[i] == "Moderate") curr_priority = 2;
-            else if (classifications[i] == "Supportive") curr_priority = 1;
-            else curr_priority = 0;
-            if (curr_priority > max_priority) max_priority = curr_priority;
-        }
-        print max_priority, ($118+0), $1,$2,$3,$5,$6,$14,$26,$54,$81,$104,$106,$107,$118
-     }' | 
-     sort -s -k1,1nr -k2,2nr | 
-     cut -f3-
-    ) > ~{sub(basename(annotSV_tsv), "\\.tsv$", "")}_intogenCCG.ranked.tsv
+    # sort by consequence score and prune columns
+    # TODO: use named column finding    
+    (head -1 ~{basename(annotSV_tsv)}_full.tsv && 
+     tail -n +2 ~{basename(annotSV_tsv)}_full.tsv | sort -t$'\t' -s -k119,119nr -k2,2n -k3,3n
+    ) > ~{ranked_tsv_name}
+      
+    (head -1 ~{CCG_tsv_name} && 
+     tail -n +2 ~{CCG_tsv_name} | sort -t$'\t' -s -k119,119nr -k2,2n -k3,3n
+    ) > ~{CCG_ranked_tsv_name}
 
+    rm -f ~{basename(annotSV_tsv)}_full.tsv
+    rm -f ~{basename(annotSV_tsv)}_split.tsv
+
+    # ACMG class > VOUS (3) (likely pathogenic (4) or pathogenic (5))
+    keep_columns='{print $1,$2,$3,$5,$6,$9,$10,$14,$15,$18,$27,$28,$29,$97,$98,$105,$106,$107,$108,$111,$112,$116,$119,$120,$121}'
+    acmg_col='$121'
+    (head -1 ~{ranked_tsv_name} | awk -F '\t' -vOFS='\t' "${keep_columns}" && 
+     tail -n +2 ~{ranked_tsv_name} | awk -F '\t' -vOFS='\t' "${acmg_col} != \"NA\" && ${acmg_col} > 3 ${keep_columns}"
+    ) > ~{ranked_concerning_tsv_name}
     >>>
 
     output {
-        File annotSV_intogen_tsv = sub(basename(annotSV_tsv), "\\.tsv$", "") + "_intogenCCG.tsv"
-        File annotSV_intogen_ranked_tsv = sub(basename(annotSV_tsv), "\\.tsv$", "") + "_intogenCCG.ranked.tsv"
+        File annotSV_ranked_tsv = "~{ranked_tsv_name}"
+        File annotSV_concerning_tsv = "~{ranked_concerning_tsv_name}"
+        File annotSV_ccg_tsv = "~{CCG_tsv_name}"
+        File annotSV_ccg_ranked_tsv = "~{CCG_ranked_tsv_name}"
     }
 
     runtime {
