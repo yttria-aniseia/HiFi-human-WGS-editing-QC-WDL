@@ -21,12 +21,12 @@ workflow assembly {
 
   input {
     File hifi_read_bam
-    
+
     String sample_id
 
     Map[String, String] ref_map
 
-    RuntimeAttributes default_runtime_attributes 
+    RuntimeAttributes default_runtime_attributes
 
   }
   String pav_sif_path = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/miniwdl_cache/singularity_cache/pav_latest.sif"
@@ -53,7 +53,7 @@ workflow assembly {
     input:
       input_fa_1 = gfa_to_fa.fasta_hap1,
       input_fa_2 = gfa_to_fa.fasta_hap2,
-      input_fa = bam_to_fasta.input_fasta, 
+      input_fa = bam_to_fasta.input_fasta,
       ref = ref_map["hg002_fasta"],
       runtime_attributes = default_runtime_attributes
   }
@@ -68,42 +68,44 @@ workflow assembly {
       pav_sif_path   = pav_sif_path,
       runtime_attributes = default_runtime_attributes
   }
-  call assembly_tasks.liftover as liftover {
-    input:
+  if (defined(pav.pav_vcf)) {
+    call assembly_tasks.liftover as liftover {
+      input:
       vcf                = select_first([pav.pav_vcf]),
       chain              = ref_map["hg002_chain"],
       ref                = ref_map["fasta"],
       runtime_attributes = default_runtime_attributes
-  }
-  call assembly_tasks.pav_sv_filter_size as pav_sv_filter_size {
-    input:
-      vcf                = liftover.lifted_vcf,
-      runtime_attributes = default_runtime_attributes
+    }
+    call assembly_tasks.pav_sv_filter_size as pav_sv_filter_size {
+      input:
+        vcf                = liftover.lifted_vcf,
+        runtime_attributes = default_runtime_attributes
+    }
   }
 
   output {
     # bam to fasta outputs
     File fasta_output = bam_to_fasta.input_fasta
-    
+
     # hifiasm assembly outputs
     File asm_1 = hifiasm_assembly.input_1_asm
     File asm_2 = hifiasm_assembly.input_2_asm
-    File transposed_report = quast.transposed_report    
+    File transposed_report = quast.transposed_report
     File icarus_html       = quast.icarus_html
     File report_html       = quast.report_html
     File report_pdf        = quast.report_pdf
     File report_txt        = quast.report_txt
-		
+
     # pav outputs
-    File pav_vcf = select_first([pav.pav_vcf])
-    File pav_vcf_index = select_first([pav.pav_vcf_index])
+    File? pav_vcf = pav.pav_vcf
+    File? pav_vcf_index = pav.pav_vcf_index
 
     #liftover outputs
-    File lifted_vcf = liftover.lifted_vcf
-    File reject_vcf = liftover.reject_vcf 
+    File? lifted_vcf = liftover.lifted_vcf
+    File? reject_vcf = liftover.reject_vcf
 
     #LARGE SV FILTER OUTPUTS
-    File large_sv_filtered_vcf = pav_sv_filter_size.large_sv_filtered_vcf
-    File large_sv_filtered_vcf_index = pav_sv_filter_size.large_sv_filtered_vcf_index
+    File? large_sv_filtered_vcf = pav_sv_filter_size.large_sv_filtered_vcf
+    File? large_sv_filtered_vcf_index = pav_sv_filter_size.large_sv_filtered_vcf_index
   }
 }

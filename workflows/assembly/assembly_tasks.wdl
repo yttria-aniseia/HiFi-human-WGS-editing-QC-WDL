@@ -41,7 +41,7 @@ task hifiasm_assembly {
         Int threads
         RuntimeAttributes runtime_attributes
     }
-    Int mem_gb    = ceil(threads * 6)
+    Int mem_gb    = ceil(threads * 8)
     Int disk_size = ceil(size(input_fasta, "GB") * 3 + 70)
 
     command <<<
