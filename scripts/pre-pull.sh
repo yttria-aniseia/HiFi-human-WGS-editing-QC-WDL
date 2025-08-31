@@ -16,7 +16,7 @@ while read -r container_url; do
         repo_tag="${container_url%%@*}"
         sha="${container_url#*@sha256:}"
         uri="docker://${repo_tag}@sha256:${sha}"
-        sif_filename="$(echo "${repo_tag}" | tr '/' '-')@sha256-${sha:0:12}.sif"
+        sif_filename="$(echo "${repo_tag}" | tr '/' '-')@sha256_${sha}.sif"
     elif [[ "${container_url}" == *:* && ! "${container_url}" == *@* ]]; then
         # Version tag format
         uri="docker://${container_url}"
@@ -36,7 +36,7 @@ while read -r container_url; do
     echo "Pulling ${container_url}"
     if ! singularity pull --dir "${singularity_cache}" "${uri}"; then
         echo "ERROR: Failed to pull ${container_url}"
-        exit 1
+        continue
     fi
 
 done < "${manifest}"
