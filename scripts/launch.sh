@@ -159,28 +159,15 @@ import json
 import os
 import shutil
 import sys
-import hashlib
+import filecmp
 from pathlib import Path
-
-def get_file_hash(filepath, chunk_size=8192):
-    """Get MD5 hash of a file for comparison"""
-    hash_md5 = hashlib.md5()
-    with open(filepath, "rb") as f:
-        for chunk in iter(lambda: f.read(chunk_size), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
 
 def should_copy_file(src_path, dest_path):
     """Check if file should be copied (doesn't exist or is different)"""
     if not dest_path.exists():
         return True
-    
-    # Compare file sizes first (quick check)
-    if os.path.getsize(src_path) != os.path.getsize(dest_path):
-        return True
-    
-    # Compare file hashes if sizes match
-    return get_file_hash(src_path) != get_file_hash(dest_path)
+
+    return not filecmp.cmp(src_path, dest_path, shallow=True)
 
 if len(sys.argv) != 2:
     print("Usage: python3 process_config.py <input_config_json>")
