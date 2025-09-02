@@ -1,10 +1,8 @@
 version 1.0
 
 import "../wdl-common/wdl/structs.wdl"
-import "../wdl-common/wdl/tasks/pbmm2.wdl" as Pbmm2
-import "../wdl-common/wdl/tasks/merge_bam_stats.wdl" as MergeBamStats
-import "../wdl-common/wdl/tasks/pbsv.wdl" as Pbsv
-import "../wdl-common/wdl/tasks/bcftools.wdl" as Bcftools
+import "../wdl-common/wdl/workflows/pbmm2/pbmm2.wdl" as Pbmm2
+import "../wdl-common/wdl/tasks/sawfish.wdl" as Sawfish
 import "../wdl-common/wdl/workflows/deepvariant/deepvariant.wdl" as DeepVariant
 import "../wdl-common/wdl/tasks/samtools.wdl" as Samtools
 import "../wdl-common/wdl/tasks/mosdepth.wdl" as Mosdepth
@@ -14,8 +12,8 @@ import "../wdl-common/wdl/tasks/hificnv.wdl" as Hificnv
 import "../edit-qc/plot_hificnv.wdl" as plot_hificnv
 import "../edit-qc/samtools_aux.wdl" as Samtools_aux
 import "../edit-qc/mosdepth_himem.wdl" as Mosdepth_himem
-import "../wdl-common/wdl/workflows/get_pbsv_splits/get_pbsv_splits.wdl" as Pbsv_splits
 import "../assembly/assembly.wdl" as Assembly
+import "../wdl-common/wdl/tasks/mitorsaw.wdl" as Mitorsaw
 
 workflow upstream {
   meta {
@@ -36,11 +34,8 @@ workflow upstream {
     ref_map_file: {
       name: "TSV containing reference genome information"
     }
-    deepvariant_version: {
-      name: "DeepVariant version"
-    }
-    custom_deepvariant_model_tar: {
-      name: "Custom DeepVariant model tarball"
+    max_reads_per_alignment_chunk: {
+      name: "Maximum reads per alignment chunk"
     }
     single_sample: {
       name: "Single sample workflow"
@@ -59,8 +54,8 @@ workflow upstream {
     Array[File] hifi_reads
 
     File ref_map_file
-    String deepvariant_version
-    File? custom_deepvariant_model_tar
+
+    Int max_reads_per_alignment_chunk
 
     Boolean single_sample = false
 
@@ -72,14 +67,15 @@ workflow upstream {
   Map[String, String] ref_map = read_map(ref_map_file)
 
   scatter (hifi_read_bam in hifi_reads) {
-    call Pbmm2.pbmm2_align_wgs as pbmm2_align {
+    call Pbmm2.pbmm2 as pbmm2 {
       input:
-        sample_id          = sample_id,
-        bam                = hifi_read_bam,
-        ref_fasta          = ref_map["fasta"],       # !FileCoercion
-        ref_index          = ref_map["fasta_index"], # !FileCoercion
-        ref_name           = ref_map["name"],
-        runtime_attributes = default_runtime_attributes
+        sample_id                  = sample_id,
+        bam                        = hifi_read_bam,
+        max_reads_per_chunk        = max_reads_per_alignment_chunk,
+        ref_fasta                  = ref_map["fasta"],              # !FileCoercion
+        ref_index                  = ref_map["fasta_index"],        # !FileCoercion
+        ref_name                   = ref_map["name"],
+        default_runtime_attributes = default_runtime_attributes
     }
     call Pbmm2.pbmm2_align_wgs as pbmm2_align_hg002 {
       input:
@@ -88,13 +84,6 @@ workflow upstream {
         ref_fasta          = ref_map["hg002_fasta"],       # !FileCoercion
         ref_index          = ref_map["hg002_fasta_index"], # !FileCoercion
         ref_name           = ref_map["hg002_name"],
-        runtime_attributes = default_runtime_attributes
-    }
-    call Pbsv.pbsv_discover {
-      input:
-        aligned_bam        = pbmm2_align.aligned_bam,
-        aligned_bam_index  = pbmm2_align.aligned_bam_index,
-        trf_bed            = ref_map["pbsv_tandem_repeat_bed"], # !FileCoercion
         runtime_attributes = default_runtime_attributes
     }
   }
@@ -107,10 +96,10 @@ workflow upstream {
   }
 
   # merge aligned bams if there are multiple
-  if (length(pbmm2_align.aligned_bam) > 1) {
+  if (length(flatten(pbmm2.aligned_bams)) > 1) {
     call Samtools.samtools_merge {
       input:
-        bams               = pbmm2_align.aligned_bam,
+        bams               = flatten(pbmm2.aligned_bams),
         out_prefix         = "~{sample_id}.~{ref_map['name']}",
         runtime_attributes = default_runtime_attributes
     }
@@ -123,8 +112,8 @@ workflow upstream {
   }
 
   # select the merged bam if it exists, otherwise select the first (only) aligned bam
-  File aligned_bam_data  = select_first([samtools_merge.merged_bam, pbmm2_align.aligned_bam[0]])
-  File aligned_bam_index = select_first([samtools_merge.merged_bam_index, pbmm2_align.aligned_bam_index[0]])
+  File aligned_bam_data  = select_first([samtools_merge.merged_bam, flatten(pbmm2.aligned_bams)[0]])
+  File aligned_bam_index = select_first([samtools_merge.merged_bam_index, flatten(pbmm2.aligned_bam_indices)[0]])
 
   File aligned_bam_data_hg002  = select_first([samtools_merge_hg002.merged_bam, pbmm2_align_hg002.aligned_bam[0]])
   File aligned_bam_index_hg002 = select_first([samtools_merge_hg002.merged_bam_index, pbmm2_align_hg002.aligned_bam_index[0]])
@@ -150,30 +139,50 @@ workflow upstream {
       runtime_attributes = default_runtime_attributes
   }
 
+  String qc_sex = 
+    if (defined(sex) && (mosdepth.inferred_sex != sex)) 
+    then "~{sample_id}: Reported sex ~{sex} does not match inferred sex ~{mosdepth.inferred_sex}."
+    else ""
 
   call DeepVariant.deepvariant {
     input:
-      sample_id                    = sample_id,
-      aligned_bams                 = [aligned_bam_data],
-      aligned_bam_indices          = [aligned_bam_index],
-      ref_fasta                    = ref_map["fasta"],             # !FileCoercion
-      ref_index                    = ref_map["fasta_index"],       # !FileCoercion
-      ref_name                     = ref_map["name"],
-      deepvariant_version          = deepvariant_version,
-      custom_deepvariant_model_tar = custom_deepvariant_model_tar,
-      gpu                          = gpu,
-      default_runtime_attributes   = default_runtime_attributes
+      sample_id                  = sample_id,
+      aligned_bams               = [aligned_bam_data],
+      aligned_bam_indices        = [aligned_bam_index],
+      ref_fasta                  = ref_map["fasta"],       # !FileCoercion
+      ref_index                  = ref_map["fasta_index"], # !FileCoercion
+      ref_name                   = ref_map["name"],
+      gpu                        = gpu,
+      default_runtime_attributes = default_runtime_attributes
+  }
+
+  call Sawfish.sawfish_discover {
+    input:
+      sample_id               = sample_id,
+      sex                     = mosdepth.inferred_sex,
+      aligned_bam             = aligned_bam_data,
+      aligned_bam_index       = aligned_bam_index,
+      ref_fasta               = ref_map["fasta"],                       # !FileCoercion
+      ref_index               = ref_map["fasta_index"],                 # !FileCoercion
+      exclude_bed             = ref_map["sawfish_exclude_bed"],         # !FileCoercion
+      exclude_bed_index       = ref_map["sawfish_exclude_bed_index"],   # !FileCoercion
+      expected_male_bed       = ref_map["sawfish_expected_bed_male"],   # !FileCoercion
+      expected_female_bed     = ref_map["sawfish_expected_bed_female"], # !FileCoercion
+      small_variant_vcf       = deepvariant.vcf,
+      small_variant_vcf_index = deepvariant.vcf_index,
+      out_prefix              = "~{sample_id}",
+      runtime_attributes      = default_runtime_attributes
   }
 
   call Trgt.trgt {
     input:
       sample_id          = sample_id,
-      sex                = select_first([sex, mosdepth.inferred_sex]),
+      sex                = mosdepth.inferred_sex,
       aligned_bam        = aligned_bam_data,
       aligned_bam_index  = aligned_bam_index,
-      ref_fasta          = ref_map["fasta"],                           # !FileCoercion
-      ref_index          = ref_map["fasta_index"],                     # !FileCoercion
-      trgt_bed           = ref_map["trgt_tandem_repeat_bed"],          # !FileCoercion
+      ref_fasta          = ref_map["fasta"],                  # !FileCoercion
+      ref_index          = ref_map["fasta_index"],            # !FileCoercion
+      trgt_bed           = ref_map["trgt_tandem_repeat_bed"], # !FileCoercion
       out_prefix         = "~{sample_id}.~{ref_map['name']}",
       runtime_attributes = default_runtime_attributes
   }
@@ -188,63 +197,33 @@ workflow upstream {
       runtime_attributes = default_runtime_attributes
   }
 
-  call Hificnv.hificnv {
+  call Mitorsaw.mitorsaw {
     input:
-      sample_id           = sample_id,
-      sex                 = select_first([sex, mosdepth.inferred_sex]),
-      aligned_bam         = aligned_bam_data,
-      aligned_bam_index   = aligned_bam_index,
-      vcf                 = deepvariant.vcf,
-      vcf_index           = deepvariant.vcf_index,
-      ref_fasta           = ref_map["fasta"],                           # !FileCoercion
-      ref_index           = ref_map["fasta_index"],                     # !FileCoercion
-      ref_name            = ref_map["name"],
-      exclude_bed         = ref_map["hificnv_exclude_bed"],             # !FileCoercion
-      exclude_bed_index   = ref_map["hificnv_exclude_bed_index"],       # !FileCoercion
-      expected_male_bed   = ref_map["hificnv_expected_bed_male"],       # !FileCoercion
-      expected_female_bed = ref_map["hificnv_expected_bed_female"],     # !FileCoercion
-      runtime_attributes  = default_runtime_attributes
-  }
-  call plot_hificnv.plot_CNV as plot_CNV {
-    input:
-      depth_bw = hificnv.depth_bw,
-      maf_bw = hificnv.maf_bw,
-      bins_genome = 2000,
-      bins_chrom = 500,
+      aligned_bam        = aligned_bam_data,
+      aligned_bam_index  = aligned_bam_index,
+      ref_fasta          = ref_map["fasta"],                  # !FileCoercion
+      ref_index          = ref_map["fasta_index"],            # !FileCoercion
+      out_prefix         = "~{sample_id}.~{ref_map['name']}",
       runtime_attributes = default_runtime_attributes
   }
 
   if (single_sample) {
-    call Pbsv_splits.get_pbsv_splits {
+    call Sawfish.sawfish_call {
       input:
-        pbsv_splits_file           = ref_map["pbsv_splits"], # !FileCoercion
-        default_runtime_attributes = default_runtime_attributes
+        sample_ids          = [sample_id],
+        discover_tars       = [sawfish_discover.discover_tar],
+        aligned_bams        = [aligned_bam_data],
+        aligned_bam_indices = [aligned_bam_index],
+        ref_fasta           = ref_map["fasta"],                                      # !FileCoercion
+        ref_index           = ref_map["fasta_index"],                                # !FileCoercion
+        out_prefix          = "~{sample_id}.~{ref_map['name']}.structural_variants",
+        runtime_attributes  = default_runtime_attributes
     }
 
-    scatter (shard_index in range(length(get_pbsv_splits.pbsv_splits))) {
-      Array[String] region_set = get_pbsv_splits.pbsv_splits[shard_index]
-
-      call Pbsv.pbsv_call {
-        input:
-          sample_id          = sample_id,
-          svsigs             = pbsv_discover.svsig,
-          ref_fasta          = ref_map["fasta"],       # !FileCoercion
-          ref_index          = ref_map["fasta_index"], # !FileCoercion
-          ref_name           = ref_map["name"],
-          shard_index        = shard_index,
-          regions            = region_set,
-          runtime_attributes = default_runtime_attributes
-      }
-    }
-
-    # concatenate pbsv vcfs
-    call Bcftools.concat_pbsv_vcf {
-      input:
-        vcfs               = pbsv_call.vcf,
-        vcf_indices        = pbsv_call.vcf_index,
-        out_prefix         = "~{sample_id}.~{ref_map['name']}.structural_variants",
-        runtime_attributes = default_runtime_attributes
-    }
+    File copynum_bedgraph_output           = sawfish_call.copynum_bedgraph[0]
+    File depth_bw_output                   = sawfish_call.depth_bw[0]
+    File gc_bias_corrected_depth_bw_output = sawfish_call.gc_bias_corrected_depth_bw[0]
+    File maf_bw_output                     = sawfish_call.maf_bw[0]
   }
   if (length(hifi_reads) > 1) {
     call Samtools_aux.samtools_cat as samtools_cat {
@@ -265,16 +244,6 @@ workflow upstream {
 
 
   output {
-    # bam stats
-    File   read_length_and_quality  = merge_bam_stats.read_length_and_quality
-    File   read_length_plot         = merge_bam_stats.read_length_plot
-    File?  read_quality_plot        = merge_bam_stats.read_quality_plot
-    String stat_num_reads           = merge_bam_stats.stat_num_reads
-    String stat_read_length_mean    = merge_bam_stats.stat_read_length_mean
-    String stat_read_length_median  = merge_bam_stats.stat_read_length_median
-    String stat_read_quality_mean   = merge_bam_stats.stat_read_quality_mean
-    String stat_read_quality_median = merge_bam_stats.stat_read_quality_median
-
     # alignments
     File out_bam       = aligned_bam_data
     File out_bam_index = aligned_bam_index
@@ -299,14 +268,17 @@ workflow upstream {
     String inferred_sex_hg002                     = mosdepth_hg002.inferred_sex
     String stat_mean_depth_hg002                  = mosdepth_hg002.stat_mean_depth
 
+    # per sample sv signatures
+    File discover_tar = sawfish_discover.discover_tar
 
-   # per movie sv signatures
-    # if we've already called variants, no need to keep these
-    Array[File] svsigs = if single_sample then [] else pbsv_discover.svsig
-
-    # pbsv outputs for single sample
-    File? sv_vcf       = concat_pbsv_vcf.concatenated_vcf
-    File? sv_vcf_index = concat_pbsv_vcf.concatenated_vcf_index
+    # sawfish outputs for single sample
+    File? sv_vcf                        = sawfish_call.vcf
+    File? sv_vcf_index                  = sawfish_call.vcf_index
+    File? sv_supporting_reads           = sawfish_call.supporting_reads
+    File? sv_copynum_bedgraph           = copynum_bedgraph_output
+    File? sv_depth_bw                   = depth_bw_output
+    File? sv_gc_bias_corrected_depth_bw = gc_bias_corrected_depth_bw_output
+    File? sv_maf_bw                     = maf_bw_output
 
     # small variant outputs
     File small_variant_vcf        = deepvariant.vcf
@@ -323,25 +295,10 @@ workflow upstream {
     String stat_trgt_uncalled_count  = trgt.stat_uncalled_count
 
     # paraphase outputs
-    File  paraphase_output_json         = paraphase.out_json
-    File  paraphase_realigned_bam       = paraphase.bam
-    File  paraphase_realigned_bam_index = paraphase.bam_index
+    File? paraphase_output_json         = paraphase.out_json
+    File? paraphase_realigned_bam       = paraphase.bam
+    File? paraphase_realigned_bam_index = paraphase.bam_index
     File? paraphase_vcfs                = paraphase.vcfs_tar
-
-    # per sample hificnv outputs
-    File   cnv_vcf              = hificnv.cnv_vcf
-    File   cnv_vcf_index        = hificnv.cnv_vcf_index
-    File   cnv_copynum_bedgraph = hificnv.copynum_bedgraph
-    File   cnv_depth_bw         = hificnv.depth_bw
-    File   cnv_maf_bw           = hificnv.maf_bw
-    String stat_cnv_DUP_count   = hificnv.stat_DUP_count
-    String stat_cnv_DEL_count   = hificnv.stat_DEL_count
-    String stat_cnv_DUP_sum     = hificnv.stat_DUP_sum
-    String stat_cnv_DEL_sum     = hificnv.stat_DEL_sum
-
-    File hificnv_genome_profile = plot_CNV.genome_profile
-    File maf_distribution = plot_CNV.maf_distribution
-    Array[File] chrom_profiles = plot_CNV.chrom_profiles
 
     # assembly outputs
     #catted bam
@@ -374,8 +331,19 @@ workflow upstream {
     File? large_sv_filtered_vcf = assembly.large_sv_filtered_vcf
     File? large_sv_filtered_vcf_index = assembly.large_sv_filtered_vcf_index
 
-    #File merged_assembly_aligned_sv_vcf = select_first([merge_sv_vcfs_align_assembly.merged_vcf])
-    #File merged_assembly_aligned_sv_vcf_index = select_first([merge_sv_vcfs_align_assembly.merged_vcf_index])
+    # per sample mitorsaw outputs
+    File mitorsaw_vcf       = mitorsaw.vcf
+    File mitorsaw_vcf_index = mitorsaw.vcf_index
+    File mitorsaw_hap_stats = mitorsaw.hap_stats
 
+    # qc messages
+    Array[String] msg = flatten(
+      [
+        flatten(pbmm2.msg),
+        [qc_sex],
+        trgt.msg,
+        sawfish_discover.msg
+      ]
+    )
   }
 }

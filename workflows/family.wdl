@@ -6,7 +6,6 @@ import "joint/joint.wdl" as Joint
 import "downstream/downstream.wdl" as Downstream
 import "wdl-common/wdl/tasks/bcftools.wdl" as Bcftools
 import "wdl-common/wdl/tasks/trgt.wdl" as Trgt
-import "wdl-common/wdl/tasks/write_ped_phrank.wdl" as Write_ped_phrank
 import "tertiary/tertiary.wdl" as TertiaryAnalysis
 import "wdl-common/wdl/tasks/utilities.wdl" as Utilities
 import "edit-qc/bcftools_aux.wdl" as Bcftools_aux
@@ -23,23 +22,11 @@ workflow humanwgs_family {
     family: {
       name: "Family struct describing samples, relationships, and unaligned BAM paths"
     }
-    ref_map_file: {
-      name: "TSV containing reference genome file paths; must match backend"
-    }
-    deepvariant_version: {
-      name: "DeepVariant version"
-    }
-    custom_deepvariant_model_tar: {
-      name: "Custom DeepVariant model tarball"
-    }
-    pharmcat_version: {
-      name: "PharmCAT version"
-    }
-    pharmcat_min_coverage: {
-      name: "Minimum coverage for PharmCAT"
-    }
     phenotypes: {
       name: "Comma-delimited list of HPO codes for phenotypes"
+    }
+    ref_map_file: {
+      name: "TSV containing reference genome file paths; must match backend"
     }
     tertiary_map_file: {
       name: "TSV containing tertiary analysis file paths and thresholds; must match backend"
@@ -47,11 +34,14 @@ workflow humanwgs_family {
     somatic_map_file: {
       name: "TSV containing somatic analysis file paths; must match backend"
     }
+    max_reads_per_alignment_chunk: {
+      name: "Maximum reads per alignment chunk"
+    }
+    pharmcat_min_coverage: {
+      name: "Minimum coverage for PharmCAT"
+    }
     glnexus_mem_gb: {
       name: "Override GLnexus memory request (GB)"
-    }
-    pbsv_call_mem_gb: {
-      name: "Override PBSV call memory request (GB)"
     }
     gpu: {
       name: "Use GPU when possible"
@@ -62,6 +52,9 @@ workflow humanwgs_family {
     }
     zones: {
       name: "Zones where compute will take place; required if backend is set to 'GCP'"
+    }
+    cpuPlatform: {
+      help: "Optional minimum CPU platform to use for tasks on GCP"
     }
     gpuType: {
       name: "GPU type to use; required if gpu is set to `true` for cloud backends; must match backend"
@@ -80,30 +73,22 @@ workflow humanwgs_family {
   input {
     Family family
 
-    File ref_map_file
-
-    File somatic_map_file
-    # These options are only intended for testing purposes.
-    # There is no guarantee that the pipeline will work with
-    # other version of DeepVariant or with custom models.
-    String deepvariant_version = "1.6.1"
-    File? custom_deepvariant_model_tar
-
-    String pharmcat_version = "2.15.4"
-    Int pharmcat_min_coverage = 10
-
     String phenotypes = "HP:0000001"
+
+    File ref_map_file
     File? tertiary_map_file
+    File somatic_map_file
 
-
+    Int max_reads_per_alignment_chunk = 500000
+    Int pharmcat_min_coverage = 10
     Int? glnexus_mem_gb
-    Int? pbsv_call_mem_gb
 
     Boolean gpu = false
 
     # Backend configuration
     String backend
     String? zones
+    String? cpuPlatform
     String? gpuType
     String? container_registry
 
@@ -116,6 +101,7 @@ workflow humanwgs_family {
     input:
       backend            = backend,
       zones              = zones,
+      cpuPlatform        = cpuPlatform,
       gpuType            = gpuType,
       container_registry = container_registry
   }
@@ -126,24 +112,43 @@ workflow humanwgs_family {
 
   Boolean single_sample = length(family.samples) == 1
 
+  Map[String, String] pedigree_sex = {
+    "MALE": "1",
+    "FEMALE": "2",
+    "": "."
+  }
+
   ####################################
   # 1a) UPSTREAM: per‐sample calls  #
   ####################################
   scatter (sample in family.samples) {
-      String sid = sample.sample_id
-    ## Wild-type branch (always run)
-      call Upstream.upstream as upstream {
-            input:
-              sample_id                    = "~{sid}",
-              sex                          = sample.sex,
-              hifi_reads                   = sample.hifi_reads,
-              ref_map_file                 = ref_map_file,
-              deepvariant_version          = deepvariant_version,
-              custom_deepvariant_model_tar = custom_deepvariant_model_tar,
-              single_sample                = single_sample,
-              gpu                          = gpu,
-              default_runtime_attributes   = default_runtime_attributes
-      }
+    String sample_id = sample.sample_id
+    Boolean is_trio_kid = defined(sample.father_id) && defined(sample.mother_id)  # !UnusedDeclaration
+    Boolean is_duo_kid = defined(sample.father_id) != defined(sample.mother_id)   # !UnusedDeclaration
+
+    call Upstream.upstream {
+      input:
+        sample_id                     = sample.sample_id,
+        sex                           = sample.sex,
+        hifi_reads                    = sample.hifi_reads,
+        ref_map_file                  = ref_map_file,
+        max_reads_per_alignment_chunk = max_reads_per_alignment_chunk,
+        single_sample                 = single_sample,
+        gpu                           = gpu,
+        default_runtime_attributes    = default_runtime_attributes
+    }
+
+    # write sample metadata similar to pedigree format
+    # family_id, sample_id, father_id, mother_id, sex, affected
+    Array[String] sample_metadata = [
+      family.family_id,
+      sample.sample_id,
+      select_first([sample.father_id, "."]),
+      select_first([sample.mother_id, "."]),
+      pedigree_sex[upstream.inferred_sex],
+      if sample.affected then "2" else "1"
+    ]
+  }
 
   }
     ####################################
@@ -151,94 +156,60 @@ workflow humanwgs_family {
     ####################################
     # after your upstream scatter and single_sample Boolean…
   if (!single_sample) {
-          call Joint.joint as joint {
-              input:
-                  family_id                  = family.family_id,
-                  sample_ids                 = sid,
-                  gvcfs                      = upstream.small_variant_gvcf,
-                  gvcf_indices               = upstream.small_variant_gvcf_index,
-                  svsigs                     = flatten(upstream.svsigs),
-                  ref_map_file               = ref_map_file,
-                  glnexus_mem_gb             = glnexus_mem_gb,
-                  pbsv_call_mem_gb           = pbsv_call_mem_gb,
-                  default_runtime_attributes = default_runtime_attributes
-          }
+    call Joint.joint {
+      input:
+        family_id                  = family.family_id,
+        sample_ids                 = sample_id,
+        gvcfs                      = upstream.small_variant_gvcf,
+        gvcf_indices               = upstream.small_variant_gvcf_index,
+        discover_tars              = upstream.discover_tar,
+        aligned_bams               = upstream.out_bam,
+      aligned_bam_indices        = upstream.out_bam_index,
+        ref_map_file               = ref_map_file,
+        glnexus_mem_gb             = glnexus_mem_gb,
+        default_runtime_attributes = default_runtime_attributes
+    }
   }
 
   scatter (sample_index in range(length(family.samples))) {
-      call Bcftools_aux.bcftools_merge_assembly_align as merge_sv_vcfs_align_assembly {
-                input:
-                    vcfs = select_all([upstream.large_sv_filtered_vcf[sample_index], select_all(select_first([joint.split_joint_structural_variant_vcfs,upstream.sv_vcf]))[sample_index]]),
-                    out_prefix  = "~{sid[sample_index]}.merged_structural_variants",
-                    runtime_attributes = default_runtime_attributes
-      }
+    call Bcftools_aux.bcftools_merge_assembly_align as merge_sv_vcfs_align_assembly {
+      input:
+      vcfs = select_all([upstream.large_sv_filtered_vcf[sample_index], select_all(select_first([joint.split_joint_structural_variant_vcfs,upstream.sv_vcf]))[sample_index]]),
+      out_prefix  = "~{sid[sample_index]}.merged_structural_variants",
+      runtime_attributes = default_runtime_attributes
+    }
   }
 
     ####################################
     # 1c) DOWNSTREAM: per‐sample calls  #
     ####################################
   scatter (sample_index in range(length(family.samples))) {
-      call Downstream.downstream as downstream {
-          input:
-          sample_id                  = "~{sid[sample_index]}",
-          small_variant_vcf          = select_first([joint.split_joint_small_variant_vcfs, upstream.small_variant_vcf])[sample_index],
-          small_variant_vcf_index    = select_first([joint.split_joint_small_variant_vcf_indices, upstream.small_variant_vcf_index])[sample_index],
-          sv_vcf                     = merge_sv_vcfs_align_assembly.merged_vcf[sample_index],
-          sv_vcf_index               = merge_sv_vcfs_align_assembly.merged_vcf_index[sample_index],
-          trgt_vcf                   = upstream.trgt_vcf[sample_index],
-          trgt_vcf_index             = upstream.trgt_vcf_index[sample_index],
-          aligned_bam                = upstream.out_bam[sample_index],
-          aligned_bam_index          = upstream.out_bam_index[sample_index],
-          pharmcat_version           = pharmcat_version,
-          pharmcat_min_coverage      = pharmcat_min_coverage,
-          ref_map_file               = ref_map_file,
-          default_runtime_attributes = default_runtime_attributes
-      }
-  }
-  Map[String, Array[String]] stats = {
-          'sample_id': sid,
-          'num_reads': upstream.stat_num_reads,
-          'read_length_mean': upstream.stat_read_length_mean,
-          'read_length_median': upstream.stat_read_length_median,
-          'read_quality_mean': upstream.stat_read_quality_mean,
-          'read_quality_median': upstream.stat_read_quality_median,
-          'mapped_read_count': downstream.stat_mapped_read_count,
-          'mapped_percent': downstream.stat_mapped_percent,
-          'mean_depth': upstream.stat_mean_depth,
-          'inferred_sex': upstream.inferred_sex,
-          'stat_phased_basepairs': downstream.stat_phased_basepairs,
-          'phase_block_ng50': downstream.stat_phase_block_ng50,
-          'cpg_combined_count': downstream.stat_combined_cpg_count,
-          'cpg_hap1_count': downstream.stat_hap1_cpg_count,
-          'cpg_hap2_count': downstream.stat_hap2_cpg_count,
-          'SNV_count': downstream.stat_SNV_count,
-          'TSTV_ratio': downstream.stat_TSTV_ratio,
-          'HETHOM_ratio': downstream.stat_HETHOM_ratio,
-          'INDEL_count': downstream.stat_INDEL_count,
-          'sv_DUP_count': downstream.stat_sv_DUP_count,
-          'sv_DEL_count': downstream.stat_sv_DEL_count,
-          'sv_INS_count': downstream.stat_sv_INS_count,
-          'sv_INV_count': downstream.stat_sv_INV_count,
-          'sv_BND_count': downstream.stat_sv_BND_count,
-          'cnv_DUP_count': upstream.stat_cnv_DUP_count,
-          'cnv_DEL_count': upstream.stat_cnv_DEL_count,
-          'cnv_DUP_sum': upstream.stat_cnv_DUP_sum,
-          'cnv_DEL_sum': upstream.stat_cnv_DEL_sum,
-          'trgt_genotyped_count': upstream.stat_trgt_genotyped_count,
-          'trgt_uncalled_count': upstream.stat_trgt_uncalled_count
+    call Downstream.downstream {
+      input:
+        sample_id                  = sample_id[sample_index],
+        small_variant_vcf          = select_first([joint.split_joint_small_variant_vcfs, upstream.small_variant_vcf])[sample_index],
+        small_variant_vcf_index    = select_first([joint.split_joint_small_variant_vcf_indices, upstream.small_variant_vcf_index])[sample_index],
+        sv_vcf                     = merge_sv_vcfs_align_assembly.merged_vcf[sample_index],
+        sv_vcf_index               = merge_sv_vcfs_align_assembly.merged_vcf_index[sample_index],
+        trgt_vcf                   = upstream.trgt_vcf[sample_index],
+        trgt_vcf_index             = upstream.trgt_vcf_index[sample_index],
+        aligned_bam                = upstream.out_bam[sample_index],
+        aligned_bam_index          = upstream.out_bam_index[sample_index],
+        pharmcat_min_coverage      = pharmcat_min_coverage,
+        ref_map_file               = ref_map_file,
+        default_runtime_attributes = default_runtime_attributes
+    }
   }
 
-  call Utilities.consolidate_stats as consolidate_stats {
-       input:
-           id                 = family.family_id,
-           stats              = stats,
-           runtime_attributes = default_runtime_attributes
+  if (!single_sample) {
+    call Bcftools.bcftools_merge as merge_small_variant_vcfs {
+      input:
+      vcfs               = downstream.phased_small_variant_vcf,
+      vcf_indices        = downstream.phased_small_variant_vcf_index,
+      out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.small_variants.phased",
+      runtime_attributes = default_runtime_attributes
+    }
   }
-
-    #############################################################
-    # 3)                  Tertiary Analysis                     #
-    #############################################################
-
 
 
     #############################################################
@@ -276,6 +247,26 @@ workflow humanwgs_family {
   }
 
 
+  #############################################################
+  # 3)                  Tertiary Analysis                     #
+  #############################################################
+
+  if (defined(tertiary_map_file)) {
+    call TertiaryAnalysis.tertiary_analysis {
+      input:
+      sample_metadata            = sample_metadata,
+      phenotypes                 = phenotypes,
+      is_trio_kid                = is_trio_kid,
+      is_duo_kid                 = is_duo_kid,
+      small_variant_vcf          = select_first([merge_small_variant_vcfs.merged_vcf, downstream.phased_small_variant_vcf[0]]),
+      small_variant_vcf_index    = select_first([merge_small_variant_vcfs.merged_vcf_index, downstream.phased_small_variant_vcf_index[0]]),
+      sv_vcf                     = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf[0]]),
+      sv_vcf_index               = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index[0]]),
+      ref_map_file               = ref_map_file,
+      tertiary_map_file          = select_first([tertiary_map_file]),
+      default_runtime_attributes = default_runtime_attributes
+    }
+  }
 
   #############################################################
   #                  SEVERUS & ANNOTATION                     #
@@ -289,11 +280,11 @@ workflow humanwgs_family {
     }
     call Write_ped_phrank.write_ped_phrank {
       input:
-        id                 = family.family_id,
-        family             = family,
-        phenotypes         = phenotypes,
-        disk_size          = ceil(size(flatten(hifi_reads), "GB")) + 10,
-        runtime_attributes = default_runtime_attributes
+      id                 = family.family_id,
+      family             = family,
+      phenotypes         = phenotypes,
+      disk_size          = ceil(size(flatten(hifi_reads), "GB")) + 10,
+      runtime_attributes = default_runtime_attributes
     }
 
     ####################################
@@ -385,57 +376,57 @@ workflow humanwgs_family {
       # if no sex given for sample, use father sample by default.
       # Generally Prefer father_id if present, else use mother_id if present, else null unless sample is Female
       String? parent_id =
-        if (family.samples[sample_index].sex == "MALE") then
-            if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
-            else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
-            else None
-        else if (family.samples[sample_index].sex == "FEMALE") then
-            if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
-            else if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
-            else None
-        else
-            if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
-            else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
-            else None
+      if (family.samples[sample_index].sex == "MALE") then
+      if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+      else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
+      else None
+      else if (family.samples[sample_index].sex == "FEMALE") then
+      if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
+      else if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+      else None
+      else
+      if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+      else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
+      else None
 
       File? parental_bam_find       = if (defined(parent_id)) then bam_files_by_id[select_first([parent_id])] else None
       File? parental_bam_index_find = if (defined(parent_id)) then bam_index_by_id[select_first([parent_id])] else None
       # call Somatic_calling.Severus_sv as phased_severus {
-      #   input:
-      #     wt_bam             = downstream.merged_haplotagged_bam[sample_index],
-      #     wt_bam_index       = downstream.merged_haplotagged_bam_index[sample_index],
-      #     parental_bam       = parental_bam_find,
-      #     parental_bam_index = parental_bam_index_find,
-      #     trf_bed            = somatic_map["trf_bed"],                    # !FileCoercion
-      #     phased_vcf         = downstream.phased_small_variant_vcf[sample_index],
-      #     threads            = 32,
-      #     min_supp_reads     = 3,
-      #     PON_tsv            = somatic_map["severus_pon_tsv"]             # !FileCoercion
+        #   input:
+        #     wt_bam             = downstream.merged_haplotagged_bam[sample_index],
+        #     wt_bam_index       = downstream.merged_haplotagged_bam_index[sample_index],
+        #     parental_bam       = parental_bam_find,
+        #     parental_bam_index = parental_bam_index_find,
+        #     trf_bed            = somatic_map["trf_bed"],                    # !FileCoercion
+        #     phased_vcf         = downstream.phased_small_variant_vcf[sample_index],
+        #     threads            = 32,
+        #     min_supp_reads     = 3,
+        #     PON_tsv            = somatic_map["severus_pon_tsv"]             # !FileCoercion
       # }
       # call Somatic_calling.tabix_vcf as tabix_vcf {
-      #  input:
-      #    vcf        = select_first([phased_severus.output_vcf]),
-      #    contig_bed = somatic_map["ref_bed"],                                   # !FileCoercion
-      #    threads    = 2
+        #  input:
+        #    vcf        = select_first([phased_severus.output_vcf]),
+        #    contig_bed = somatic_map["ref_bed"],                                   # !FileCoercion
+        #    threads    = 2
       # }
       # call Somatic_calling.svpack_filter_annotated as svpack_filter_annotated {
-      #  input:
-      #    sv_vcf                 = tabix_vcf.output_vcf,
-      #    population_vcfs        = [somatic_map["control_vcf"]],                 # !FileCoercion
-      #    population_vcf_indices = [somatic_map["control_vcf_index"]],           # !FileCoercion
-      #    gff                    = somatic_map["ref_gff"]                        # !FileCoercion
+        #  input:
+        #    sv_vcf                 = tabix_vcf.output_vcf,
+        #    population_vcfs        = [somatic_map["control_vcf"]],                 # !FileCoercion
+        #    population_vcf_indices = [somatic_map["control_vcf_index"]],           # !FileCoercion
+        #    gff                    = somatic_map["ref_gff"]                        # !FileCoercion
       # }
       # call Somatic_calling.recover_mate_bnd as recover_mate_bnd {
-      #  input:
-      #    sv_vcf_original    = select_first([phased_severus.output_vcf]),
-      #    sv_svpack_filtered = svpack_filter_annotated.output_vcf
+        #  input:
+        #    sv_vcf_original    = select_first([phased_severus.output_vcf]),
+        #    sv_svpack_filtered = svpack_filter_annotated.output_vcf
       # }
       # call Somatic_annotation.annotsv as annotateSeverusSVfiltered {
-      #   input:
-      #     sv_vcf        = select_first([recover_mate_bnd.output_vcf]),
-      #     sv_vcf_index  = select_first([recover_mate_bnd.output_vcf_index]),
-      #     annotsv_cache = somatic_map["annotsv_cache"],                           # !FileCoercion
-      #     threads       = 2
+        #   input:
+        #     sv_vcf        = select_first([recover_mate_bnd.output_vcf]),
+        #     sv_vcf_index  = select_first([recover_mate_bnd.output_vcf_index]),
+        #     annotsv_cache = somatic_map["annotsv_cache"],                           # !FileCoercion
+        #     threads       = 2
       # }
 
 
@@ -444,77 +435,114 @@ workflow humanwgs_family {
 
       call TruvariParentFilter.filter_parent_variants as parent_filter_small_variants {
         input:
-          sample_vcf              = bcftools_split_small_variants.split_vcfs[sample_index],
-          sample_vcf_index        = bcftools_split_small_variants.split_vcfs_index[sample_index],
-          truvari_consistency_tsv = truvari_consistency_small_variants.truvari_consistency_tsv,
-          sample_index            = sample_index,
-          parent_index            = parent_index,
-          runtime_attributes      = default_runtime_attributes
+        sample_vcf              = bcftools_split_small_variants.split_vcfs[sample_index],
+        sample_vcf_index        = bcftools_split_small_variants.split_vcfs_index[sample_index],
+        truvari_consistency_tsv = truvari_consistency_small_variants.truvari_consistency_tsv,
+        sample_index            = sample_index,
+        parent_index            = parent_index,
+        runtime_attributes      = default_runtime_attributes
       }
 
       call TruvariParentFilter.filter_parent_variants as parent_filter_sv {
         input:
-          sample_vcf              = bcftools_split_sv.split_vcfs[sample_index],
-          sample_vcf_index        = bcftools_split_sv.split_vcfs_index[sample_index],
-          truvari_consistency_tsv = truvari_consistency_sv.truvari_consistency_tsv,
-          sample_index            = sample_index,
-          parent_index            = parent_index,
-          runtime_attributes      = default_runtime_attributes
+        sample_vcf              = bcftools_split_sv.split_vcfs[sample_index],
+        sample_vcf_index        = bcftools_split_sv.split_vcfs_index[sample_index],
+        truvari_consistency_tsv = truvari_consistency_sv.truvari_consistency_tsv,
+        sample_index            = sample_index,
+        parent_index            = parent_index,
+        runtime_attributes      = default_runtime_attributes
       }
 
       # AnnotSV after split because we need its tsv conversion
       call Somatic_annotation.annotsv as annotate_parent_filter_sv {
         input:
-          sv_vcf        = parent_filter_sv.filtered_vcf,
-          sv_vcf_index  = parent_filter_sv.filtered_vcf_index,
-          annotsv_cache = somatic_map["annotsv_cache"],                             # !FileCoercion
-          threads       = 2
+        sv_vcf        = parent_filter_sv.filtered_vcf,
+        sv_vcf_index  = parent_filter_sv.filtered_vcf_index,
+        annotsv_cache = somatic_map["annotsv_cache"],                             # !FileCoercion
+        threads       = 2
       }
 
       call Somatic_annotation.prioritize_small_variants as prioritizeSomatic {
         input:
-          vep_annotated_vcf   = parent_filter_small_variants.filtered_vcf,
-          threads             = 2,
-          sample              = family.samples[sample_index].sample_id
+        vep_annotated_vcf   = parent_filter_small_variants.filtered_vcf,
+        threads             = 2,
+        sample              = family.samples[sample_index].sample_id
       }
       call Somatic_annotation.prioritize_sv_intogen as prioritize_sv {
         input:
-          annotSV_tsv   = annotate_parent_filter_sv.annotated_tsv,
-          threads       = 2
+        annotSV_tsv   = annotate_parent_filter_sv.annotated_tsv,
+        threads       = 2
       }
       # call Somatic_annotation.prioritize_sv_intogen as prioritize_Severus {
-      #   input:
-      #     annotSV_tsv   = annotateSeverusSVfiltered.annotated_tsv,
-      #     threads       = 2
+        #   input:
+        #     annotSV_tsv   = annotateSeverusSVfiltered.annotated_tsv,
+        #     threads       = 2
       # }
     }
   }
+  
+  Map[String, Array[String]] stats = {
+    'sample_id': sample_id,
+    'num_reads': downstream.stat_num_reads,
+    'read_length_mean': downstream.stat_read_length_mean,
+    'read_length_median': downstream.stat_read_length_median,
+    'read_quality_mean': downstream.stat_read_quality_mean,
+    'read_quality_median': downstream.stat_read_quality_median,
+    'mapped_read_count': downstream.stat_mapped_read_count,
+    'mapped_percent': downstream.stat_mapped_percent,
+    'mean_depth': upstream.stat_mean_depth,
+    'inferred_sex': upstream.inferred_sex,
+    'stat_phased_basepairs': downstream.stat_phased_basepairs,
+    'phase_block_ng50': downstream.stat_phase_block_ng50,
+    'cpg_combined_count': downstream.stat_combined_cpg_count,
+    'cpg_hap1_count': downstream.stat_hap1_cpg_count,
+    'cpg_hap2_count': downstream.stat_hap2_cpg_count,
+    'SNV_count': downstream.stat_SNV_count,
+    'TSTV_ratio': downstream.stat_TSTV_ratio,
+    'HETHOM_ratio': downstream.stat_HETHOM_ratio,
+    'INDEL_count': downstream.stat_INDEL_count,
+    'sv_DUP_count': downstream.stat_sv_DUP_count,
+    'sv_DEL_count': downstream.stat_sv_DEL_count,
+    'sv_INS_count': downstream.stat_sv_INS_count,
+    'sv_INV_count': downstream.stat_sv_INV_count,
+    'sv_SWAP_count': downstream.stat_sv_SWAP_count,
+    'sv_BND_count': downstream.stat_sv_BND_count,
+    'trgt_genotyped_count': upstream.stat_trgt_genotyped_count,
+    'trgt_uncalled_count': upstream.stat_trgt_uncalled_count
+  }
 
-
-
+  call Utilities.consolidate_stats {
+    input:
+      id                 = family.family_id,
+      stats              = stats,
+      msg_array          = flatten([flatten(upstream.msg)]),
+      runtime_attributes = default_runtime_attributes
+  }
+  
   output {
     # to maintain order of samples
-    Array[String] sample_ids = sid
-    File stats_file          = consolidate_stats.output_tsv
+    Array[String] sample_ids = sample_id
+    File  stats_file         = consolidate_stats.output_tsv
+    File  msg_file           = consolidate_stats.messages
 
     ## WT OUTPUTS
     # bam stats
-    Array[File]   bam_stats                = upstream.read_length_and_quality
-    Array[File]   read_length_plot         = upstream.read_length_plot
-    Array[File?]  read_quality_plot        = upstream.read_quality_plot
-    Array[String] stat_num_reads           = upstream.stat_num_reads
-    Array[String] stat_read_length_mean    = upstream.stat_read_length_mean
-    Array[String] stat_read_length_median  = upstream.stat_read_length_median
-    Array[String] stat_read_quality_mean   = upstream.stat_read_quality_mean
-    Array[String] stat_read_quality_median = upstream.stat_read_quality_median
+    Array[File]   bam_statistics           = downstream.bam_statistics
+    Array[File]   read_length_plot         = downstream.read_length_plot
+    Array[File?]  read_quality_plot        = downstream.read_quality_plot
+    Array[File]   mapq_distribution_plot   = downstream.mapq_distribution_plot
+    Array[File]   mg_distribution_plot     = downstream.mg_distribution_plot
+    Array[String] stat_num_reads           = downstream.stat_num_reads
+    Array[String] stat_read_length_mean    = downstream.stat_read_length_mean
+    Array[String] stat_read_length_median  = downstream.stat_read_length_median
+    Array[String] stat_read_quality_mean   = downstream.stat_read_quality_mean
+    Array[String] stat_read_quality_median = downstream.stat_read_quality_median
+    Array[String] stat_mapped_read_count   = downstream.stat_mapped_read_count
+    Array[String] stat_mapped_percent      = downstream.stat_mapped_percent
 
     # merged, haplotagged alignments
     Array[File]   merged_haplotagged_bam       = downstream.merged_haplotagged_bam
     Array[File]   merged_haplotagged_bam_index = downstream.merged_haplotagged_bam_index
-    Array[String] stat_mapped_read_count       = downstream.stat_mapped_read_count
-    Array[String] stat_mapped_percent          = downstream.stat_mapped_percent
-    Array[File]   mapq_distribution_plot       = downstream.mapq_distribution_plot
-    Array[File]   mg_distribution_plot         = downstream.mg_distribution_plot
 
     # mosdepth outputs
     Array[File]   mosdepth_summary                 = upstream.mosdepth_summary
@@ -554,15 +582,21 @@ workflow humanwgs_family {
     Array[String] stat_cpg_combined_count = downstream.stat_combined_cpg_count
 
     # sv outputs
-    Array[File] phased_sv_vcf       = downstream.phased_sv_vcf
-    Array[File] phased_sv_vcf_index = downstream.phased_sv_vcf_index
+    Array[File] phased_sv_vcf                 = downstream.phased_sv_vcf
+    Array[File] phased_sv_vcf_index           = downstream.phased_sv_vcf_index
+    File sv_supporting_reads                  = select_first([joint.sv_supporting_reads, upstream.sv_supporting_reads[0]])
+    Array[File] sv_copynum_bedgraph           = select_first([joint.sv_copynum_bedgraph, select_all(upstream.sv_copynum_bedgraph)])
+    Array[File] sv_depth_bw                   = select_first([joint.sv_depth_bw, select_all(upstream.sv_depth_bw)])
+    Array[File] sv_gc_bias_corrected_depth_bw = select_first([joint.sv_gc_bias_corrected_depth_bw, select_all(upstream.sv_gc_bias_corrected_depth_bw)])
+    Array[File] sv_maf_bw                     = select_first([joint.sv_maf_bw, select_all(upstream.sv_maf_bw)])
 
     # sv stats
-    Array[String] stat_sv_DUP_count = downstream.stat_sv_DUP_count
-    Array[String] stat_sv_DEL_count = downstream.stat_sv_DEL_count
-    Array[String] stat_sv_INS_count = downstream.stat_sv_INS_count
-    Array[String] stat_sv_INV_count = downstream.stat_sv_INV_count
-    Array[String] stat_sv_BND_count = downstream.stat_sv_BND_count
+    Array[String] stat_sv_DUP_count  = downstream.stat_sv_DUP_count
+    Array[String] stat_sv_DEL_count  = downstream.stat_sv_DEL_count
+    Array[String] stat_sv_INS_count  = downstream.stat_sv_INS_count
+    Array[String] stat_sv_INV_count  = downstream.stat_sv_INV_count
+    Array[String] stat_sv_SWAP_count = downstream.stat_sv_SWAP_count
+    Array[String] stat_sv_BND_count  = downstream.stat_sv_BND_count
 
     # small variant outputs
     Array[File] phased_small_variant_vcf       = downstream.phased_small_variant_vcf
@@ -591,21 +625,15 @@ workflow humanwgs_family {
     Array[String] stat_trgt_uncalled_count  = upstream.stat_trgt_uncalled_count
 
     # paraphase outputs
-    Array[File]  paraphase_output_json         = upstream.paraphase_output_json
-    Array[File]  paraphase_realigned_bam       = upstream.paraphase_realigned_bam
-    Array[File]  paraphase_realigned_bam_index = upstream.paraphase_realigned_bam_index
+    Array[File?] paraphase_output_json         = upstream.paraphase_output_json
+    Array[File?] paraphase_realigned_bam       = upstream.paraphase_realigned_bam
+    Array[File?] paraphase_realigned_bam_index = upstream.paraphase_realigned_bam_index
     Array[File?] paraphase_vcfs                = upstream.paraphase_vcfs
 
-    # per sample cnv outputs
-    Array[File]   cnv_vcf              = upstream.cnv_vcf
-    Array[File]   cnv_vcf_index        = upstream.cnv_vcf_index
-    Array[File]   cnv_copynum_bedgraph = upstream.cnv_copynum_bedgraph
-    Array[File]   cnv_depth_bw         = upstream.cnv_depth_bw
-    Array[File]   cnv_maf_bw           = upstream.cnv_maf_bw
-    Array[String] stat_cnv_DUP_count   = upstream.stat_cnv_DUP_count
-    Array[String] stat_cnv_DEL_count   = upstream.stat_cnv_DEL_count
-    Array[String] stat_cnv_DUP_sum     = upstream.stat_cnv_DUP_sum
-    Array[String] stat_cnv_DEL_sum     = upstream.stat_cnv_DEL_sum
+    # per sample mitorsaw outputs
+    Array[File] mitorsaw_vcf       = upstream.mitorsaw_vcf
+    Array[File] mitorsaw_vcf_index = upstream.mitorsaw_vcf_index
+    Array[File] mitorsaw_hap_stats = upstream.mitorsaw_hap_stats
 
     # PGx outputs
     Array[File]  pbstarphase_json        = downstream.pbstarphase_json
@@ -690,9 +718,26 @@ workflow humanwgs_family {
     # Array[File] Severus_annotated_ranked_tsv                  = select_first([prioritize_Severus.annotSV_ranked_tsv])
     # Array[File] Severus_annotated_ccg_tsv                     = select_first([prioritize_Severus.annotSV_ccg_tsv])
     # Array[File] Severus_annotated_ccg_ranked_tsv              = select_first([prioritize_Severus.annotSV_ccg_ranked_tsv])
+    # tertiary analysis outputs
+    File? tertiary_small_variant_filtered_vcf           = tertiary_analysis.small_variant_filtered_vcf
+    File? tertiary_small_variant_filtered_vcf_index     = tertiary_analysis.small_variant_filtered_vcf_index
+    File? tertiary_small_variant_filtered_tsv           = tertiary_analysis.small_variant_filtered_tsv
+    File? tertiary_small_variant_compound_het_vcf       = tertiary_analysis.small_variant_compound_het_vcf
+    File? tertiary_small_variant_compound_het_vcf_index = tertiary_analysis.small_variant_compound_het_vcf_index
+    File? tertiary_small_variant_compound_het_tsv       = tertiary_analysis.small_variant_compound_het_tsv
+    File? tertiary_sv_filtered_vcf                      = tertiary_analysis.sv_filtered_vcf
+    File? tertiary_sv_filtered_vcf_index                = tertiary_analysis.sv_filtered_vcf_index
+    File? tertiary_sv_filtered_tsv                      = tertiary_analysis.sv_filtered_tsv
+
+    # qc messages
+    Array[String] msg = flatten(
+      [
+        flatten(upstream.msg)
+      ]
+    )
 
     # workflow metadata
     String workflow_name    = "humanwgs_family"
-    String workflow_version = "v2.1.1" + if defined(debug_version) then "~{"-" + debug_version}" else ""
+    String workflow_version = "v3.0.2" + if defined(debug_version) then "~{"-" + debug_version}" else ""
   }
 }

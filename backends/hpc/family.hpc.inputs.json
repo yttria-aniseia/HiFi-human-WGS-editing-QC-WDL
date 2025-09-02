@@ -1,44 +1,23 @@
 {
   "humanwgs_family.family": {
-    "family_id": "FAM1",
+    "family_id": "String",
     "samples": [
       {
-        "sample_id": "jax_kolf",
+        "sample_id": "String",
         "hifi_reads": [
-            "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/inputs/m64119_220415_203938.hifi-reads.bam"
+          "File"
         ],
-        "affected": false,
-        "sex": "MALE",
-        "father_id": "NA",
-        "mother_id": "NA"
-      },
-      {
-        "sample_id": "bc2092",
-        "hifi_reads": [
-            "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/inputs/m84251R1_250315_005627_s2.hifi_reads.bc2092.bam"
-        ],
-        "affected": false,
-        "sex": "MALE",
-        "father_id": "jax_kolf",
-        "mother_id": "NA"
-      },
-      {
-        "sample_id": "bc2024",
-        "hifi_reads": [
-            "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/inputs/m84251R1_250503_053528_s4.hifi_reads.bc2024.bam"
-        ],
-        "affected": false,
-        "sex": "FEMALE",
-        "father_id": "NA",
-        "mother_id": "jax_kolf"
+        "affected": "Boolean",
+        "sex": "String? (optional, ['MALE', 'FEMALE', null])",
+        "father_id": "String? (optional)",
+        "mother_id": "String? (optional)"
       }
-
     ]
   },
-  "humanwgs_family.phenotypes": "NA",
-  "humanwgs_family.ref_map_file": "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/hifi-wdl-resources-v2/GRCh38.ref_map.v2p0p0.template.tsv",
-  "humanwgs_family.tertiary_map_file": "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/hifi-wdl-resources-v2/GRCh38.tertiary_map.v2p0p0.template.tsv",
-  "humanwgs_family.pharmcat_min_coverage": 1,
+  "humanwgs_family.phenotypes": "String? (optional)",
+  "humanwgs_family.ref_map_file": "<local_path_prefix>/dataset/GRCh38.ref_map.v3p0p0.hpc.tsv",
+  "humanwgs_family.tertiary_map_file": "<local_path_prefix>/dataset/GRCh38.tertiary_map.v3p0p0.hpc.tsv",
+  "humanwgs_family.somatic_map_file": "<local_path_prefix>/dataset/GRCh38.somatic_map.v3p0p0.hpc.tsv",
   "humanwgs_family.backend": "HPC",
   "humanwgs_family.preemptible": true
 }

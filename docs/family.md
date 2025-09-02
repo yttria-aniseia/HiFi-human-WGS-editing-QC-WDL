@@ -9,7 +9,6 @@
     - [Alignments, Coverage, and QC](#alignments-coverage-and-qc)
     - [Small Variants (\<50 bp)](#small-variants-50-bp)
     - [Structural Variants (≥50 bp)](#structural-variants-50-bp)
-    - [Copy Number Variants (≥100 kb)](#copy-number-variants-100-kb)
     - [Tandem Repeat Genotyping](#tandem-repeat-genotyping)
     - [Variant Phasing](#variant-phasing)
     - [Variant Calling in Dark Regions](#variant-calling-in-dark-regions)
@@ -24,49 +23,82 @@
 title: family.wdl
 ---
 flowchart TD
-  subgraph "`**Upstream of Phasing (per-sample)**`"
+  subgraph "`**Upstream of Phasing\n(per-sample)**`"
     subgraph "per-movie"
-      ubam[/"HiFi uBAM"/] --> pbmm2_align["pbmm2 align"]
-      pbmm2_align --> pbsv_discover["PBSV discover"]
+      ubam[/"HiFi uBAM"/]
+      pbmm2_align["pbmm2 align"]
     end
-    pbmm2_align --> merge_read_stats["merge read statistics"]
-    pbmm2_align --> samtools_merge["samtools merge"]
-    samtools_merge --> mosdepth["mosdepth"]
-    samtools_merge --> paraphase["Paraphase"]
-    samtools_merge --> hificnv["HiFiCNV"]
-    samtools_merge --> trgt["TRGT"]
-    samtools_merge --> trgt_dropouts["TR coverage dropouts"]
-    samtools_merge --> deepvariant["DeepVariant"]
-    samtools_merge --> hiphase["HiPhase"]
+    samtools_merge["samtools merge"]
+    mosdepth["mosdepth"]
+    paraphase["Paraphase"]
+    mitorsaw["MitorSaw"]
+    trgt["TRGT"]
+    trgt_dropouts["TR coverage dropouts"]
+    deepvariant["DeepVariant"]
+    sawfish_discover["Sawfish discover"]
   end
   subgraph "`**Joint Calling**`"
-    deepvariant --> glnexus["GLnexus (joint-call small variants)"]
-    pbsv_discover --> pbsv_call["PBSV call"]
-    glnexus --> split_glnexus["split small variant vcf by sample"]
-    pbsv_call --> split_pbsv["split SV vcf by sample"]
+    glnexus["GLnexus (joint-call small variants)"]
+    sawfish_call["Sawfish call"]
+    split_glnexus["split small variant vcf by sample"]
+    split_sawfish["split SV vcf by sample"]
   end
-  subgraph "`**Phasing and Downstream (per-sample)**`"
-    split_glnexus --> hiphase
-    trgt --> hiphase
-    split_pbsv --> hiphase
-    hiphase --> bcftools_roh["bcftools roh"]
-    hiphase --> bcftools_stats["bcftools stats\n(small variants)"]
-    hiphase --> sv_stats["SV stats"]
-    hiphase --> cpg_pileup["5mCpG pileup"]
-    hiphase --> starphase["StarPhase"]
-    hiphase --> pharmcat["PharmCat"]
-    starphase --> pharmcat
+  subgraph "`**Phasing and Downstream**`"
+    hiphase["HiPhase"]
+    bam_stats["BAM stats"]
+    bcftools_roh["bcftools roh"]
+    bcftools_stats["bcftools stats\n(small variants)"]
+    sv_stats["SV stats"]
+    cpg_pileup["5mCpG pileup"]
+    starphase["StarPhase"]
+    pharmcat["PharmCat"]
   end
   subgraph " "
-    hiphase --> merge_small_variants["bcftools merge small variants"]
-    hiphase --> merge_svs["bcftools merge SV"]
-    hiphase --> trgt_merge["trgt merge"]
+    merge_small_variants["bcftools merge small variants"]
+    merge_svs["bcftools merge SV"]
+    trgt_merge["trgt merge"]
   end
   subgraph "`**Tertiary Analysis**`"
-    merge_small_variants --> slivar_small_variants["slivar small variants"]
-    merge_svs --> svpack["svpack filter and annotate"]
-    svpack --> slivar_svpack["slivar svpack tsv"]
+    slivar_small_variants["slivar small variants"]
+    svpack["svpack filter and annotate"]
+    slivar_svpack["slivar svpack tsv"]
   end
+
+  ubam --> pbmm2_align --> samtools_merge
+  samtools_merge --> mosdepth
+  samtools_merge --> paraphase
+  samtools_merge --> mitorsaw
+  samtools_merge --> trgt
+  samtools_merge --> trgt_dropouts
+  samtools_merge --> deepvariant
+  samtools_merge --> sawfish_discover
+  samtools_merge --> hiphase
+  deepvariant --> sawfish_discover
+  deepvariant --> glnexus
+  sawfish_discover --> sawfish_call
+  trgt --> hiphase
+
+  glnexus --> split_glnexus
+  sawfish_call --> split_sawfish
+  split_glnexus --> hiphase
+  split_sawfish --> hiphase
+
+  hiphase --> bam_stats
+  hiphase --> bcftools_roh
+  hiphase --> bcftools_stats
+  hiphase --> sv_stats
+  hiphase --> cpg_pileup
+  hiphase --> starphase
+  hiphase --> pharmcat
+  starphase --> pharmcat
+
+  hiphase --> merge_small_variants
+  hiphase --> merge_svs
+  hiphase --> trgt_merge
+
+  merge_small_variants --> slivar_small_variants
+  merge_svs --> svpack
+  svpack --> slivar_svpack
 ```
 
 ## Inputs
@@ -82,6 +114,7 @@ flowchart TD
 | Boolean | gpu | Use GPU when possible<br/><br/>Default: `false` | [GPU support](./gpu.md#gpu-support) |
 | String | backend | Backend where the workflow will be executed<br/><br/>`["GCP", "Azure", "AWS-HealthOmics", "HPC"]` |  |
 | String? | zones | Zones where compute will take place; required if backend is set to 'AWS' or 'GCP'. | [Determining available zones in GCP](./backends.md/gcp#determining-available-zones) |
+| String? | cpuPlatform | Minimum CPU platform to use for tasks on GCP | Optional, only necessary in certain zones lacking n1 nodes. |
 | String? | gpuType | GPU type to use; required if gpu is set to `true` for cloud backends; must match backend  | [Available GPU types](./gpu.md#gpu-types) |
 | String? | container_registry | Container registry where workflow images are hosted.<br/><br/>Default: `"quay.io/pacbio"` | If omitted, [PacBio's public Quay.io registry](https://quay.io/organization/pacbio) will be used.<br/><br/>Custom container_registry must be set if backend is set to 'AWS-HealthOmics'. |
 | Boolean | preemptible | Where possible, run tasks preemptibly<br/><br/>`[true, false]`<br/><br/>Default: `true` | If set to `true`, run tasks preemptibly where possible. If set to `false`, on-demand VMs will be used for every task. Ignored if backend is set to HPC. |
@@ -116,6 +149,8 @@ The `Sample` struct contains sample specific data and metadata. The struct has t
 | ---- | ---- | ----------- | ----- |
 | String | workflow_name | Workflow name |  |
 | String | workflow_version | Workflow version |  |
+| Array\[String\] | msg | Messages from the workflow |  |
+| File | msg_file | File containing messages from the workflow |  |
 | Array\[String\] | sample_ids | Sample IDs |  |
 | File | stats_file | Table of summary statistics |  |
 | Array\[File\] | bam_stats | BAM stats | Per-read length and read-quality |
@@ -168,24 +203,24 @@ The `Sample` struct contains sample specific data and metadata. The struct has t
 | Array\[String\] | stat_sv_INS_count | Structural variant INS count | (PASS variants) |
 | Array\[String\] | stat_sv_INV_count | Structural variant INV count | (PASS variants) |
 | Array\[String\] | stat_sv_BND_count | Structural variant BND count | (PASS variants) |
+| Array\[String\] | stat_sv_SWAP_count | Structural variant sequence swap events | (PASS variants) |
+| File | sv_supporting_reads | Supporting reads for structural variants |  |
+| Array\[File\] | sv_copynum_bedgraph | CNV copy number BEDGraph |  |
+| Array\[File\] | sv_depth_bw | CNV depth BigWig |  |
+| Array\[File\] | sv_gc_bias_corrected_depth_bw | CNV GC-bias corrected depth BigWig |  |
+| Array\[File\] | sv_maf_bw | CNV MAF BigWig |  |
 | Array\[File\] | bcftools_roh_out | ROH calling |  `bcftools roh` |
 | Array\[File\] | bcftools_roh_bed | Generated from above, without filtering |  |
 | File? | joint_sv_vcf | Joint-called structural variant VCF |  |
 | File? | joint_sv_vcf_index |  |  |
 
-### Copy Number Variants (≥100 kb)
+### Mitochondrial variants and haplotypes
 
 | Type | Name | Description | Notes |
 | ---- | ---- | ----------- | ----- |
-| Array\[File\] | cnv_vcf | CNV VCF |  |
-| Array\[File\] | cnv_vcf_index | Index for CNV VCF |  |
-| Array\[File\] | cnv_copynum_bedgraph | CNV copy number BEDGraph |  |
-| Array\[File\] | cnv_depth_bw | CNV depth BigWig |  |
-| Array\[File\] | cnv_maf_bw | CNV MAF BigWig |  |
-| Array\[String\] | stat_cnv_DUP_count | Count of DUP events | (for PASS variants) |
-| Array\[String\] | stat_cnv_DEL_count | Count of DEL events | (PASS variants) |
-| Array\[String\] | stat_cnv_DUP_sum | Sum of DUP bp | (PASS variants) |
-| Array\[String\] | stat_cnv_DEL_sum | Sum of DEL bp | (PASS variants) |
+| Array\[File\] | mitorsaw_vcf | Mitochondrial variant VCF |  |
+| Array\[File\] | mitorsaw_vcf_index | Index for mitochondrial variant VCF |  |
+| Array\[File\] | mitorsaw_hap_stats | Mitochondrial haplotype stats |  |
 
 ### Tandem Repeat Genotyping
 
@@ -215,9 +250,9 @@ The `Sample` struct contains sample specific data and metadata. The struct has t
 
 | Type | Name | Description | Notes |
 | ---- | ---- | ----------- | ----- |
-| Array\[File\] | paraphase_output_json | Paraphase output JSON |  |
-| Array\[File\] | paraphase_realigned_bam | Paraphase realigned BAM |  |
-| Array\[File\] | paraphase_realigned_bam_index |  |  |
+| Array\[File?\] | paraphase_output_json | Paraphase output JSON |  |
+| Array\[File?\] | paraphase_realigned_bam | Paraphase realigned BAM |  |
+| Array\[File?\] | paraphase_realigned_bam_index |  |  |
 | Array\[File?\] | paraphase_vcfs | Paraphase VCFs | Compressed as `.tar.gz` |
 
 ### 5mCpG Methylation Calling
