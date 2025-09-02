@@ -251,9 +251,9 @@ task filter_parent_variants {
   Int threads = 4
   Int mem_gb = 8
   Int disk_size = ceil(size(sample_vcf, "GB") * 2 + size(truvari_consistency_tsv, "GB") + 20)
+  String filtered_consistency_tsv = sub(basename(truvari_consistency_tsv), "\\.tsv$", "") + ".parent_filtered.tsv"
   String filtered_vcf_file = sub(basename(sample_vcf), "\\.vcf.gz$", "") + ".parent_filtered.vcf.gz"
   String filtered_vcf_index_file = "~{filtered_vcf_file}.tbi"
-  String filtered_consistency_tsv = sub(basename(truvari_consistency_tsv), "\\.tsv$", "") + ".parent_filtered.tsv"
 
   command <<<
     set -euxo pipefail
@@ -283,8 +283,8 @@ EOF
         -a ~{filtered_consistency_tsv}.gz \
         -c 'CHROM,POS,~ID,REF,ALT,=FLAG,=COUNT' \
         -h truvari_consistency.hdr \
-        -i 'FLAG!=0' \
-        ~{sample_vcf} | bcftools sort -Oz -Wtbi -o ~{filtered_vcf_file}
+        -Ob \
+        ~{sample_vcf} | bcftools filter -i "FLAG>0" -Ob | bcftools sort -Oz -Wtbi -o ~{filtered_vcf_file}
     else
       # No parent specified, copy original VCF
       cp ~{sample_vcf} ~{filtered_vcf_file}

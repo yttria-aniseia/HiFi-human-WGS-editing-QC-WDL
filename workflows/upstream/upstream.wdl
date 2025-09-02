@@ -129,7 +129,7 @@ workflow upstream {
   File aligned_bam_data_hg002  = select_first([samtools_merge_hg002.merged_bam, pbmm2_align_hg002.aligned_bam[0]])
   File aligned_bam_index_hg002 = select_first([samtools_merge_hg002.merged_bam_index, pbmm2_align_hg002.aligned_bam_index[0]])
 
-  
+
   call Mosdepth_himem.mosdepth as mosdepth_hg002 {
     input:
       sample_id          = sample_id,
@@ -149,7 +149,7 @@ workflow upstream {
       infer_sex          = true,
       runtime_attributes = default_runtime_attributes
   }
-  
+
 
   call DeepVariant.deepvariant {
     input:
@@ -179,7 +179,7 @@ workflow upstream {
   }
 
   call Trgt.coverage_dropouts {
-    input: 
+    input:
       aligned_bam        = aligned_bam_data,
       aligned_bam_index  = aligned_bam_index,
       trgt_bed           = ref_map["trgt_tandem_repeat_bed"], # !FileCoercion
@@ -288,10 +288,10 @@ workflow upstream {
     File out_bam       = aligned_bam_data
     File out_bam_index = aligned_bam_index
 
-    #hg002 alingments 
+    #hg002 alingments
     File out_bam_hg002       = aligned_bam_data_hg002
     File out_bam_hg002_index = aligned_bam_index_hg002
-    
+
     # mosdepth outputs
     File   mosdepth_summary                 = mosdepth.summary
     File   mosdepth_region_bed              = mosdepth.region_bed
@@ -348,11 +348,11 @@ workflow upstream {
     String stat_cnv_DEL_count   = hificnv.stat_DEL_count
     String stat_cnv_DUP_sum     = hificnv.stat_DUP_sum
     String stat_cnv_DEL_sum     = hificnv.stat_DEL_sum
-    
+
     File hificnv_genome_profile = plot_CNV.genome_profile
     File maf_distribution = plot_CNV.maf_distribution
     Array[File] chrom_profiles = plot_CNV.chrom_profiles
-    
+
     # assembly outputs
     #catted bam
     File? cat_bam = samtools_cat.merged_bam
@@ -360,10 +360,12 @@ workflow upstream {
 
     #bam to fasta outputs
     File fasta_output = assembly.fasta_output
-    
+
     # hifiasm assembly outputs
     File asm_1 = assembly.asm_1
     File asm_2 = assembly.asm_2
+
+    # quast report output
     File quast_transposed_report = assembly.transposed_report
     File quast_icarus_html = assembly.icarus_html
     File quast_report_html = assembly.report_html
@@ -371,20 +373,19 @@ workflow upstream {
     File quast_report_txt = assembly.report_txt
 
     # pav outputs
-    File pav_vcf = assembly.pav_vcf
-    File pav_vcf_index = assembly.pav_vcf_index
+    File? pav_vcf = assembly.pav_vcf
+    File? pav_vcf_index = assembly.pav_vcf_index
 
     #liftover outputs
-    File lifted_vcf = assembly.lifted_vcf
-    File reject_vcf = assembly.reject_vcf 
+    File? lifted_vcf = assembly.lifted_vcf
+    File? reject_vcf = assembly.reject_vcf
 
     #LARGE SV FILTER OUTPUTS
-    File large_sv_filtered_vcf = assembly.large_sv_filtered_vcf
-    File large_sv_filtered_vcf_index = assembly.large_sv_filtered_vcf_index
+    File? large_sv_filtered_vcf = assembly.large_sv_filtered_vcf
+    File? large_sv_filtered_vcf_index = assembly.large_sv_filtered_vcf_index
 
     #File merged_assembly_aligned_sv_vcf = select_first([merge_sv_vcfs_align_assembly.merged_vcf])
     #File merged_assembly_aligned_sv_vcf_index = select_first([merge_sv_vcfs_align_assembly.merged_vcf_index])
- 
 
   }
 }

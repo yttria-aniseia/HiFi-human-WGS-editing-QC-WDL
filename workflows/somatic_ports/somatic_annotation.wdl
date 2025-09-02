@@ -2,7 +2,7 @@ version 1.1
 
 
 
-## task definitons 
+## task definitons
 task vep_annotate {
     input {
         File input_vcf
@@ -15,7 +15,7 @@ task vep_annotate {
 
     Float file_size = ceil(size(input_vcf, "GB") + size(vep_cache, "GB") + size(ref_fasta, "GB") + size(ref_fasta_index, "GB"))
     String vep_annotated_vcf = sub(basename(input_vcf), "\\.vcf.gz$", "") + ".vep.vcf.gz"
-    
+
     command <<<
         set -euxo pipefail
 
@@ -93,7 +93,7 @@ task annotsv {
         else
             cp ~{sv_vcf} tmp.vcf
         fi
-        
+
         awk -F'\t' -v OFS='\t' '
         { if (NR==2) {
                 print "##INFO=<ID=SV_ALT,Number=1,Type=String,Description=\"Square bracketed notation for BND event\">"
@@ -201,22 +201,22 @@ task prioritize_sv_intogen {
     String CCG_ranked_tsv_name = "~{sub(basename(annotSV_tsv), "\\.tsv$", "")}_CCG.ranked.tsv"
     String ranked_tsv_name = "~{sub(basename(annotSV_tsv), "\\.tsv$", "")}.ranked.tsv"
     String ranked_concerning_tsv_name = "~{sub(basename(annotSV_tsv), "\\.tsv$", "")}.ranked_concerning.tsv"
-    
+
     command <<<
     set -euxo pipefail
-    
+
     csvtk version
 
     # Remove any quote from the file
     sed "s/\"//g" ~{annotSV_tsv} > ~{basename(annotSV_tsv)}_noquote.tsv
 
-    # ccg annotation only makes sense for split gene records from annotsv, but full usually better
+    # 'split' is gene-centric view; 'full' is variant-centric.
     csvtk filter2 -t -f '$Annotation_mode == "full"' \
       ~{basename(annotSV_tsv)}_noquote.tsv > ~{basename(annotSV_tsv)}_full.tsv
     csvtk filter2 -t -f '$Annotation_mode == "split"' \
       ~{basename(annotSV_tsv)}_noquote.tsv > ~{basename(annotSV_tsv)}_split.tsv
 
-    csvtk join -t \
+    csvtk join --left-join -t \
       ~{basename(annotSV_tsv)}_split.tsv \
       /app/Compendium_Cancer_Genes.tsv \
       -f "Gene_name;SYMBOL" |\
@@ -227,12 +227,12 @@ task prioritize_sv_intogen {
     rm -f ~{basename(annotSV_tsv)}_noquote.tsv
 
     # sort by consequence score and prune columns
-    # TODO: use named column finding    
-    (head -1 ~{basename(annotSV_tsv)}_full.tsv && 
+    # TODO: use named column finding
+    (head -1 ~{basename(annotSV_tsv)}_full.tsv &&
      tail -n +2 ~{basename(annotSV_tsv)}_full.tsv | sort -t$'\t' -s -k119,119nr -k2,2n -k3,3n
     ) > ~{ranked_tsv_name}
-      
-    (head -1 ~{CCG_tsv_name} && 
+
+    (head -1 ~{CCG_tsv_name} &&
      tail -n +2 ~{CCG_tsv_name} | sort -t$'\t' -s -k119,119nr -k2,2n -k3,3n
     ) > ~{CCG_ranked_tsv_name}
 
@@ -242,7 +242,7 @@ task prioritize_sv_intogen {
     # ACMG class > VOUS (3) (likely pathogenic (4) or pathogenic (5))
     keep_columns='{print $1,$2,$3,$5,$6,$9,$10,$14,$15,$18,$27,$28,$29,$97,$98,$105,$106,$107,$108,$111,$112,$116,$119,$120,$121}'
     acmg_col='$121'
-    (head -1 ~{ranked_tsv_name} | awk -F '\t' -vOFS='\t' "${keep_columns}" && 
+    (head -1 ~{ranked_tsv_name} | awk -F '\t' -vOFS='\t' "${keep_columns}" &&
      tail -n +2 ~{ranked_tsv_name} | awk -F '\t' -vOFS='\t' "${acmg_col} != \"NA\" && ${acmg_col} > 3 ${keep_columns}"
     ) > ~{ranked_concerning_tsv_name}
     >>>
@@ -285,8 +285,8 @@ task prioritize_small_variants {
 
     echo -e "CHROM\tPOS\tREF\tALT\tFORMAT\t~{pname}\t$(bcftools +split-vep ~{vep_annotated_vcf} -l | cut -f2 | tr '\n' '\t' | sed 's/\t$//g')" > ~{fname}
      bcftools view -s ~{sample} -e 'GT="ref"||GT="mis"' ~{vep_annotated_vcf} | bcftools +split-vep -A tab -f '%CHROM\t%POS\t%REF\t%ALT\t%FORMAT\t%CSQ\n' >> ~{fname}
-    
-    #RANKING AND FILTERING 
+
+    #RANKING AND FILTERING
     [[ -f "~{fname}" ]] || { echo "ERROR: ${fname} not found" >&2; exit 1; }
 
     # 2) find IMPACT column index (1‐based)
@@ -299,7 +299,7 @@ task prioritize_small_variants {
 
     # 3) write header unchanged
     head -n1 "~{fname}" > "~{fname_ranked}"
-    
+
     # 4) rank & sort, then strip the rank in awk (no cut!)
     tail -n +2 "~{fname}" \
       | awk -F $'\t' -v OFS=$'\t' -v impact="$impactcol" '
@@ -343,5 +343,3 @@ task prioritize_small_variants {
         preemptible: 1
     }
 }
-
-

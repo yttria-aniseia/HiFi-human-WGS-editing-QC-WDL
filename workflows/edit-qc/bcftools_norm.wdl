@@ -21,16 +21,23 @@ task bcftools_norm_split_multiallelic {
         set -euxo pipefail
         
         bcftools --version
-        
+
+        bcftools sort \
+            --max-mem "~{mem_gb}G" \
+            -O z \
+            ~{input_vcf} \
+            | \
         bcftools norm \
             -m - \
             -f ~{ref_fasta} \
             --threads ~{threads} \
             -O z \
+            | \
+        bcftools sort \
+            --max-mem "~{mem_gb}G" \
+            -Wtbi \
+            -O z \
             -o ~{output_vcf} \
-            ~{input_vcf}
-            
-        bcftools index -t ~{output_vcf}
     >>>
     
     output {
