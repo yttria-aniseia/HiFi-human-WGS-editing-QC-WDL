@@ -21,18 +21,7 @@
         "sex": "MALE",
         "father_id": "jax_kolf",
         "mother_id": "NA"
-      },
-      {
-        "sample_id": "bc2024",
-        "hifi_reads": [
-            "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/inputs/m84251R1_250503_053528_s4.hifi_reads.bc2024.bam"
-        ],
-        "affected": false,
-        "sex": "FEMALE",
-        "father_id": "NA",
-        "mother_id": "jax_kolf"
-      }
-
+      } 
     ]
   },
   "humanwgs_family.phenotypes": "NA",

@@ -1,5 +1,4 @@
-version 1.0
-
+version 1.1
 import "humanwgs_structs.wdl"
 import "wdl-common/wdl/workflows/backend_configuration/backend_configuration.wdl" as BackendConfiguration
 import "upstream/upstream.wdl" as Upstream
@@ -10,8 +9,11 @@ import "wdl-common/wdl/tasks/trgt.wdl" as Trgt
 import "wdl-common/wdl/tasks/write_ped_phrank.wdl" as Write_ped_phrank
 import "tertiary/tertiary.wdl" as TertiaryAnalysis
 import "wdl-common/wdl/tasks/utilities.wdl" as Utilities
+import "edit-qc/bcftools_aux.wdl" as Bcftools_aux
+import "edit-qc/bcftools_norm.wdl" as Bcftools_norm
+import "edit-qc/truvari_parent_filter.wdl" as TruvariParentFilter
 import "somatic_ports/somatic_annotation.wdl" as Somatic_annotation
-
+import "somatic_ports/somatic_calling.wdl" as Somatic_calling
 workflow humanwgs_family {
   meta {
     description: "PacBio HiFi human whole genome sequencing pipeline, with joint calling for related samples."
@@ -41,6 +43,9 @@ workflow humanwgs_family {
     }
     tertiary_map_file: {
       name: "TSV containing tertiary analysis file paths and thresholds; must match backend"
+    }
+    somatic_map_file: {
+      name: "TSV containing somatic analysis file paths; must match backend"
     }
     glnexus_mem_gb: {
       name: "Override GLnexus memory request (GB)"
@@ -77,6 +82,7 @@ workflow humanwgs_family {
 
     File ref_map_file
 
+    File somatic_map_file
     # These options are only intended for testing purposes.
     # There is no guarantee that the pipeline will work with
     # other version of DeepVariant or with custom models.
@@ -88,6 +94,7 @@ workflow humanwgs_family {
 
     String phenotypes = "HP:0000001"
     File? tertiary_map_file
+
 
     Int? glnexus_mem_gb
     Int? pbsv_call_mem_gb
@@ -103,8 +110,6 @@ workflow humanwgs_family {
     Boolean preemptible = true
 
     String? debug_version
-    File vep_cache = "/hpc/mydata/ram.ayyala/HiFi-human-WGS-editing-QC-WDL/homo_sapiens_refseq_vep_112_GRCh38.tar.gz"
-    File annotsv_cache = "/hpc/mydata/ram.ayyala/HiFi-human-WGS-editing-QC-WDL/annotsv_cache.tar.gz"
   }
 
   call BackendConfiguration.backend_configuration {
@@ -121,129 +126,167 @@ workflow humanwgs_family {
 
   Boolean single_sample = length(family.samples) == 1
 
+  ####################################
+  # 1a) UPSTREAM: per‐sample calls  #
+  ####################################
   scatter (sample in family.samples) {
-    String sample_id = sample.sample_id
-    call Upstream.upstream {
-      input:
-        sample_id                    = sample.sample_id,
-        sex                          = sample.sex,
-        hifi_reads                   = sample.hifi_reads,
-        ref_map_file                 = ref_map_file,
-        deepvariant_version          = deepvariant_version,
-        custom_deepvariant_model_tar = custom_deepvariant_model_tar,
-        single_sample                = single_sample,
-        gpu                          = gpu,
-        default_runtime_attributes   = default_runtime_attributes
-    }
-  }
+      String sid = sample.sample_id
+    ## Wild-type branch (always run)
+      call Upstream.upstream as upstream {
+            input:
+              sample_id                    = "~{sid}",
+              sex                          = sample.sex,
+              hifi_reads                   = sample.hifi_reads,
+              ref_map_file                 = ref_map_file,
+              deepvariant_version          = deepvariant_version,
+              custom_deepvariant_model_tar = custom_deepvariant_model_tar,
+              single_sample                = single_sample,
+              gpu                          = gpu,
+              default_runtime_attributes   = default_runtime_attributes
+      }
 
+  }
+    ####################################
+    # 1b)         JOINT:                #
+    ####################################
+    # after your upstream scatter and single_sample Boolean…
   if (!single_sample) {
-    call Joint.joint {
-      input:
-        family_id                  = family.family_id,
-        sample_ids                 = sample_id,
-        gvcfs                      = upstream.small_variant_gvcf,
-        gvcf_indices               = upstream.small_variant_gvcf_index,
-        svsigs                     = flatten(upstream.svsigs),
-        ref_map_file               = ref_map_file,
-        glnexus_mem_gb             = glnexus_mem_gb,
-        pbsv_call_mem_gb           = pbsv_call_mem_gb,
-        default_runtime_attributes = default_runtime_attributes
-    }
+          call Joint.joint as joint {
+              input:
+                  family_id                  = family.family_id,
+                  sample_ids                 = sid,
+                  gvcfs                      = upstream.small_variant_gvcf,
+                  gvcf_indices               = upstream.small_variant_gvcf_index,
+                  svsigs                     = flatten(upstream.svsigs),
+                  ref_map_file               = ref_map_file,
+                  glnexus_mem_gb             = glnexus_mem_gb,
+                  pbsv_call_mem_gb           = pbsv_call_mem_gb,
+                  default_runtime_attributes = default_runtime_attributes
+          }
   }
 
   scatter (sample_index in range(length(family.samples))) {
-    call Downstream.downstream {
-      input:
-        sample_id                  = sample_id[sample_index],
-        small_variant_vcf          = select_first([joint.split_joint_small_variant_vcfs, upstream.small_variant_vcf])[sample_index],
-        small_variant_vcf_index    = select_first([joint.split_joint_small_variant_vcf_indices, upstream.small_variant_vcf_index])[sample_index],
-        sv_vcf                     = select_first([joint.split_joint_structural_variant_vcfs, select_all(upstream.sv_vcf)])[sample_index],
-        sv_vcf_index               = select_first([joint.split_joint_structural_variant_vcf_indices, select_all(upstream.sv_vcf_index)])[sample_index],
-        trgt_vcf                   = upstream.trgt_vcf[sample_index],
-        trgt_vcf_index             = upstream.trgt_vcf_index[sample_index],
-        aligned_bam                = upstream.out_bam[sample_index],
-        aligned_bam_index          = upstream.out_bam_index[sample_index],
-        pharmcat_version           = pharmcat_version,
-        pharmcat_min_coverage      = pharmcat_min_coverage,
-        ref_map_file               = ref_map_file,
-        default_runtime_attributes = default_runtime_attributes
-    }
+      call Bcftools_aux.bcftools_merge_assembly_align as merge_sv_vcfs_align_assembly {
+                input:
+                    vcfs = select_all([upstream.large_sv_filtered_vcf[sample_index], select_all(select_first([joint.split_joint_structural_variant_vcfs,upstream.sv_vcf]))[sample_index]]),
+                    out_prefix  = "~{sid[sample_index]}.merged_structural_variants",
+                    runtime_attributes = default_runtime_attributes
+      }
   }
 
+    ####################################
+    # 1c) DOWNSTREAM: per‐sample calls  #
+    ####################################
+  scatter (sample_index in range(length(family.samples))) {
+      call Downstream.downstream as downstream {
+          input:
+          sample_id                  = "~{sid[sample_index]}",
+          small_variant_vcf          = select_first([joint.split_joint_small_variant_vcfs, upstream.small_variant_vcf])[sample_index],
+          small_variant_vcf_index    = select_first([joint.split_joint_small_variant_vcf_indices, upstream.small_variant_vcf_index])[sample_index],
+          sv_vcf                     = merge_sv_vcfs_align_assembly.merged_vcf[sample_index],
+          sv_vcf_index               = merge_sv_vcfs_align_assembly.merged_vcf_index[sample_index],
+          trgt_vcf                   = upstream.trgt_vcf[sample_index],
+          trgt_vcf_index             = upstream.trgt_vcf_index[sample_index],
+          aligned_bam                = upstream.out_bam[sample_index],
+          aligned_bam_index          = upstream.out_bam_index[sample_index],
+          pharmcat_version           = pharmcat_version,
+          pharmcat_min_coverage      = pharmcat_min_coverage,
+          ref_map_file               = ref_map_file,
+          default_runtime_attributes = default_runtime_attributes
+      }
+  }
   Map[String, Array[String]] stats = {
-    'sample_id': sample_id,
-    'num_reads': upstream.stat_num_reads,
-    'read_length_mean': upstream.stat_read_length_mean,
-    'read_length_median': upstream.stat_read_length_median,
-    'read_quality_mean': upstream.stat_read_quality_mean,
-    'read_quality_median': upstream.stat_read_quality_median,
-    'mapped_read_count': downstream.stat_mapped_read_count,
-    'mapped_percent': downstream.stat_mapped_percent,
-    'mean_depth': upstream.stat_mean_depth,
-    'inferred_sex': upstream.inferred_sex,
-    'stat_phased_basepairs': downstream.stat_phased_basepairs,
-    'phase_block_ng50': downstream.stat_phase_block_ng50,
-    'cpg_combined_count': downstream.stat_combined_cpg_count,
-    'cpg_hap1_count': downstream.stat_hap1_cpg_count,
-    'cpg_hap2_count': downstream.stat_hap2_cpg_count,
-    'SNV_count': downstream.stat_SNV_count,
-    'TSTV_ratio': downstream.stat_TSTV_ratio,
-    'HETHOM_ratio': downstream.stat_HETHOM_ratio,
-    'INDEL_count': downstream.stat_INDEL_count,
-    'sv_DUP_count': downstream.stat_sv_DUP_count,
-    'sv_DEL_count': downstream.stat_sv_DEL_count,
-    'sv_INS_count': downstream.stat_sv_INS_count,
-    'sv_INV_count': downstream.stat_sv_INV_count,
-    'sv_BND_count': downstream.stat_sv_BND_count,
-    'cnv_DUP_count': upstream.stat_cnv_DUP_count,
-    'cnv_DEL_count': upstream.stat_cnv_DEL_count,
-    'cnv_DUP_sum': upstream.stat_cnv_DUP_sum,
-    'cnv_DEL_sum': upstream.stat_cnv_DEL_sum,
-    'trgt_genotyped_count': upstream.stat_trgt_genotyped_count,
-    'trgt_uncalled_count': upstream.stat_trgt_uncalled_count
+          'sample_id': sid,
+          'num_reads': upstream.stat_num_reads,
+          'read_length_mean': upstream.stat_read_length_mean,
+          'read_length_median': upstream.stat_read_length_median,
+          'read_quality_mean': upstream.stat_read_quality_mean,
+          'read_quality_median': upstream.stat_read_quality_median,
+          'mapped_read_count': downstream.stat_mapped_read_count,
+          'mapped_percent': downstream.stat_mapped_percent,
+          'mean_depth': upstream.stat_mean_depth,
+          'inferred_sex': upstream.inferred_sex,
+          'stat_phased_basepairs': downstream.stat_phased_basepairs,
+          'phase_block_ng50': downstream.stat_phase_block_ng50,
+          'cpg_combined_count': downstream.stat_combined_cpg_count,
+          'cpg_hap1_count': downstream.stat_hap1_cpg_count,
+          'cpg_hap2_count': downstream.stat_hap2_cpg_count,
+          'SNV_count': downstream.stat_SNV_count,
+          'TSTV_ratio': downstream.stat_TSTV_ratio,
+          'HETHOM_ratio': downstream.stat_HETHOM_ratio,
+          'INDEL_count': downstream.stat_INDEL_count,
+          'sv_DUP_count': downstream.stat_sv_DUP_count,
+          'sv_DEL_count': downstream.stat_sv_DEL_count,
+          'sv_INS_count': downstream.stat_sv_INS_count,
+          'sv_INV_count': downstream.stat_sv_INV_count,
+          'sv_BND_count': downstream.stat_sv_BND_count,
+          'cnv_DUP_count': upstream.stat_cnv_DUP_count,
+          'cnv_DEL_count': upstream.stat_cnv_DEL_count,
+          'cnv_DUP_sum': upstream.stat_cnv_DUP_sum,
+          'cnv_DEL_sum': upstream.stat_cnv_DEL_sum,
+          'trgt_genotyped_count': upstream.stat_trgt_genotyped_count,
+          'trgt_uncalled_count': upstream.stat_trgt_uncalled_count
   }
 
-  call Utilities.consolidate_stats {
-    input:
-      id                 = family.family_id,
-      stats              = stats,
-      runtime_attributes = default_runtime_attributes
+  call Utilities.consolidate_stats as consolidate_stats {
+       input:
+           id                 = family.family_id,
+           stats              = stats,
+           runtime_attributes = default_runtime_attributes
   }
 
-  if (!single_sample) {
-    call Bcftools.bcftools_merge as merge_small_variant_vcfs {
-      input:
-        vcfs               = downstream.phased_small_variant_vcf,
-        vcf_indices        = downstream.phased_small_variant_vcf_index,
-        out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.small_variants.phased",
-        runtime_attributes = default_runtime_attributes
-    }
+    #############################################################
+    # 3)                  Tertiary Analysis                     #
+    #############################################################
 
-    call Bcftools.bcftools_merge as merge_sv_vcfs {
-      input:
-        vcfs               = downstream.phased_sv_vcf,
-        vcf_indices        = downstream.phased_sv_vcf_index,
-        out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.structural_variants.phased",
-        runtime_attributes = default_runtime_attributes
-    }
 
-    call Trgt.trgt_merge {
-      input:
-        vcfs               = downstream.phased_trgt_vcf,
-        vcf_indices        = downstream.phased_trgt_vcf_index,
-        ref_fasta          = ref_map["fasta"],                              # !FileCoercion
-        ref_index          = ref_map["fasta_index"],                        # !FileCoercion
-        out_prefix         = "~{family.family_id}.merged.~{ref_map['name']}.trgt",
-        runtime_attributes = default_runtime_attributes
-    }
+
+    #############################################################
+    #       MERGING SVs and small variants ACROSS SAMPLES       #
+    #############################################################
+
+
+
+    if (!single_sample) {
+        call Bcftools.bcftools_merge as merge_small_variant_vcfs {
+          input:
+            vcfs               = downstream.phased_small_variant_vcf,
+            vcf_indices        = downstream.phased_small_variant_vcf_index,
+            out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.small_variants.phased",
+            runtime_attributes = default_runtime_attributes
+        }
+
+        call Bcftools.bcftools_merge as merge_sv_vcfs {
+          input:
+            vcfs               = downstream.phased_sv_vcf,
+            vcf_indices        = downstream.phased_sv_vcf_index,
+            out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.structural_variants.phased",
+            runtime_attributes = default_runtime_attributes
+        }
+
+        call Trgt.trgt_merge {
+          input:
+            vcfs               = downstream.phased_trgt_vcf,
+            vcf_indices        = downstream.phased_trgt_vcf_index,
+            ref_fasta          = ref_map["fasta"],                              # !FileCoercion
+            ref_index          = ref_map["fasta_index"],                        # !FileCoercion
+            out_prefix         = "~{family.family_id}.merged.~{ref_map['name']}.trgt",
+            runtime_attributes = default_runtime_attributes
+        }
   }
 
-  if (defined(tertiary_map_file)) {
+
+
+  #############################################################
+  #                  SEVERUS & ANNOTATION                     #
+  #############################################################
+
+  if (defined(tertiary_map_file) && defined(somatic_map_file)) {
+    Map [String, String] somatic_map = read_map(somatic_map_file)
+
     scatter (sample in family.samples) {
       Array[File] hifi_reads = sample.hifi_reads
     }
-
     call Write_ped_phrank.write_ped_phrank {
       input:
         id                 = family.family_id,
@@ -252,45 +295,209 @@ workflow humanwgs_family {
         disk_size          = ceil(size(flatten(hifi_reads), "GB")) + 10,
         runtime_attributes = default_runtime_attributes
     }
-    
+
+    ####################################
+    # 3a)      SEVERUS & ANNOTATION    #
+    ####################################
+    Map[String, File] bam_files_by_id = as_map(zip(sid, downstream.merged_haplotagged_bam))
+    Map[String, File] bam_index_by_id = as_map(zip(sid, downstream.merged_haplotagged_bam_index))
+    Map[String, Int] sidx_by_id = as_map(zip(sid, range(length(sid))))
+
+    call Bcftools_norm.bcftools_norm_split_multiallelic as normalize_small_variants {
+      input:
+      input_vcf           = select_first([merge_small_variant_vcfs.merged_vcf, downstream.phased_small_variant_vcf]),
+      ref_fasta           = ref_map["fasta"],
+      ref_fasta_index     = ref_map["fasta_index"],
+      out_prefix          = "~{family.family_id}.small_variants.normalized",
+      runtime_attributes  = default_runtime_attributes
+    }
+
+    call Bcftools_norm.bcftools_norm_split_multiallelic as normalize_sv {
+      input:
+      input_vcf           = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf]),
+      input_vcf_index     = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index]),
+      ref_fasta           = ref_map["fasta"],
+      ref_fasta_index     = ref_map["fasta_index"],
+      out_prefix          = "~{family.family_id}.sv.normalized",
+      runtime_attributes  = default_runtime_attributes
+    }
+
     call Somatic_annotation.vep_annotate as annotateGermline {
-        input:
-            input_vcf           = select_first([merge_small_variant_vcfs.merged_vcf, downstream.phased_small_variant_vcf[0]]),
-            vep_cache           = select_first([vep_cache]),
-            ref_fasta           = ref_map["fasta"],
-            ref_fasta_index     = ref_map["fasta_index"],
-            threads             = 32
+      input:
+      input_vcf           = normalize_small_variants.normalized_vcf,
+      vep_cache           = somatic_map["vep_cache"],                           # !FileCoercion
+      ref_fasta           = ref_map["fasta"],
+      ref_fasta_index     = ref_map["fasta_index"],
+      threads             = 16
     }
 
-    call Somatic_annotation.annotsv as annotateSV {
-        input: 
-            sv_vcf              = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf[0]]),
-            sv_vcf_index        = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index[0]]),
-            annotsv_cache       = select_first([annotsv_cache]),  
-            threads             = 32
+    call TruvariParentFilter.truvari_collapse as truvari_collapse_sv {
+      input:
+      merged_vcf         = normalize_sv.normalized_vcf,
+      merged_vcf_index   = normalize_sv.normalized_vcf_index,
+      out_prefix         = "~{family.family_id}.sv.parent_filter",
+      runtime_attributes = default_runtime_attributes
     }
 
-   
+    call TruvariParentFilter.bcftools_split_for_truvari as bcftools_split_sv {
+      input:
+      truvari_merge_vcf  = truvari_collapse_sv.truvari_merge_vcf,
+      out_prefix         = "~{family.family_id}.sv.parent_filter",
+      runtime_attributes = default_runtime_attributes
+    }
 
-    call TertiaryAnalysis.tertiary_analysis {
+    call TruvariParentFilter.truvari_consistency as truvari_consistency_sv {
+      input:
+      split_vcfs         = bcftools_split_sv.split_vcfs,
+      split_vcfs_index   = bcftools_split_sv.split_vcfs_index,
+      sample_order_file  = bcftools_split_sv.sample_order_file,
+      out_prefix         = "~{family.family_id}.sv.parent_filter",
+      runtime_attributes = default_runtime_attributes
+    }
+
+    call TruvariParentFilter.truvari_collapse as truvari_collapse_small_variants {
+      input:
+      merged_vcf         = annotateGermline.annotated_vcf,
+      merged_vcf_index   = annotateGermline.annotated_vcf_index,
+      out_prefix         = "~{family.family_id}.small_variants.parent_filter",
+      runtime_attributes = default_runtime_attributes
+    }
+
+    call TruvariParentFilter.bcftools_split_for_truvari as bcftools_split_small_variants {
+      input:
+      truvari_merge_vcf  = truvari_collapse_small_variants.truvari_merge_vcf,
+      out_prefix         = "~{family.family_id}.small_variants.parent_filter",
+      runtime_attributes = default_runtime_attributes
+    }
+
+    call TruvariParentFilter.truvari_consistency as truvari_consistency_small_variants {
+      input:
+      split_vcfs         = bcftools_split_small_variants.split_vcfs,
+      split_vcfs_index   = bcftools_split_small_variants.split_vcfs_index,
+      sample_order_file  = bcftools_split_small_variants.sample_order_file,
+      out_prefix         = "~{family.family_id}.small_variants.parent_filter",
+      runtime_attributes = default_runtime_attributes
+    }
+
+    scatter (sample_index in range(length(family.samples))) {
+
+      # Sex matching, if sample is male, we use male parent, if female we use female parent.
+      # if no sex given for sample, use father sample by default.
+      # Generally Prefer father_id if present, else use mother_id if present, else null unless sample is Female
+      String? parent_id =
+        if (family.samples[sample_index].sex == "MALE") then
+            if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+            else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
+            else None
+        else if (family.samples[sample_index].sex == "FEMALE") then
+            if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
+            else if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+            else None
+        else
+            if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+            else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
+            else None
+
+      File? parental_bam_find       = if (defined(parent_id)) then bam_files_by_id[select_first([parent_id])] else None
+      File? parental_bam_index_find = if (defined(parent_id)) then bam_index_by_id[select_first([parent_id])] else None
+      # call Somatic_calling.Severus_sv as phased_severus {
+      #   input:
+      #     wt_bam             = downstream.merged_haplotagged_bam[sample_index],
+      #     wt_bam_index       = downstream.merged_haplotagged_bam_index[sample_index],
+      #     parental_bam       = parental_bam_find,
+      #     parental_bam_index = parental_bam_index_find,
+      #     trf_bed            = somatic_map["trf_bed"],                    # !FileCoercion
+      #     phased_vcf         = downstream.phased_small_variant_vcf[sample_index],
+      #     threads            = 32,
+      #     min_supp_reads     = 3,
+      #     PON_tsv            = somatic_map["severus_pon_tsv"]             # !FileCoercion
+      # }
+      # call Somatic_calling.tabix_vcf as tabix_vcf {
+      #  input:
+      #    vcf        = select_first([phased_severus.output_vcf]),
+      #    contig_bed = somatic_map["ref_bed"],                                   # !FileCoercion
+      #    threads    = 2
+      # }
+      # call Somatic_calling.svpack_filter_annotated as svpack_filter_annotated {
+      #  input:
+      #    sv_vcf                 = tabix_vcf.output_vcf,
+      #    population_vcfs        = [somatic_map["control_vcf"]],                 # !FileCoercion
+      #    population_vcf_indices = [somatic_map["control_vcf_index"]],           # !FileCoercion
+      #    gff                    = somatic_map["ref_gff"]                        # !FileCoercion
+      # }
+      # call Somatic_calling.recover_mate_bnd as recover_mate_bnd {
+      #  input:
+      #    sv_vcf_original    = select_first([phased_severus.output_vcf]),
+      #    sv_svpack_filtered = svpack_filter_annotated.output_vcf
+      # }
+      # call Somatic_annotation.annotsv as annotateSeverusSVfiltered {
+      #   input:
+      #     sv_vcf        = select_first([recover_mate_bnd.output_vcf]),
+      #     sv_vcf_index  = select_first([recover_mate_bnd.output_vcf_index]),
+      #     annotsv_cache = somatic_map["annotsv_cache"],                           # !FileCoercion
+      #     threads       = 2
+      # }
+
+
+      # parent filtering
+      Int parent_index = if defined(parent_id) then sidx_by_id[select_first([parent_id])] else 999
+
+      call TruvariParentFilter.filter_parent_variants as parent_filter_small_variants {
         input:
-            pedigree                   = write_ped_phrank.pedigree,
-            phrank_lookup              = write_ped_phrank.phrank_lookup,
-            small_variant_vcf          = select_first([merge_small_variant_vcfs.merged_vcf, downstream.phased_small_variant_vcf[0]]),
-            small_variant_vcf_index    = select_first([merge_small_variant_vcfs.merged_vcf_index, downstream.phased_small_variant_vcf_index[0]]),
-            sv_vcf                     = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf[0]]),
-            sv_vcf_index               = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index[0]]),
-            ref_map_file               = ref_map_file,
-            tertiary_map_file          = select_first([tertiary_map_file]),
-            default_runtime_attributes = default_runtime_attributes
+          sample_vcf              = bcftools_split_small_variants.split_vcfs[sample_index],
+          sample_vcf_index        = bcftools_split_small_variants.split_vcfs_index[sample_index],
+          truvari_consistency_tsv = truvari_consistency_small_variants.truvari_consistency_tsv,
+          sample_index            = sample_index,
+          parent_index            = parent_index,
+          runtime_attributes      = default_runtime_attributes
+      }
+
+      call TruvariParentFilter.filter_parent_variants as parent_filter_sv {
+        input:
+          sample_vcf              = bcftools_split_sv.split_vcfs[sample_index],
+          sample_vcf_index        = bcftools_split_sv.split_vcfs_index[sample_index],
+          truvari_consistency_tsv = truvari_consistency_sv.truvari_consistency_tsv,
+          sample_index            = sample_index,
+          parent_index            = parent_index,
+          runtime_attributes      = default_runtime_attributes
+      }
+
+      # AnnotSV after split because we need its tsv conversion
+      call Somatic_annotation.annotsv as annotate_parent_filter_sv {
+        input:
+          sv_vcf        = parent_filter_sv.filtered_vcf,
+          sv_vcf_index  = parent_filter_sv.filtered_vcf_index,
+          annotsv_cache = somatic_map["annotsv_cache"],                             # !FileCoercion
+          threads       = 2
+      }
+
+      call Somatic_annotation.prioritize_small_variants as prioritizeSomatic {
+        input:
+          vep_annotated_vcf   = parent_filter_small_variants.filtered_vcf,
+          threads             = 2,
+          sample              = family.samples[sample_index].sample_id
+      }
+      call Somatic_annotation.prioritize_sv_intogen as prioritize_sv {
+        input:
+          annotSV_tsv   = annotate_parent_filter_sv.annotated_tsv,
+          threads       = 2
+      }
+      # call Somatic_annotation.prioritize_sv_intogen as prioritize_Severus {
+      #   input:
+      #     annotSV_tsv   = annotateSeverusSVfiltered.annotated_tsv,
+      #     threads       = 2
+      # }
     }
   }
 
+
+
   output {
     # to maintain order of samples
-    Array[String] sample_ids = sample_id
+    Array[String] sample_ids = sid
     File stats_file          = consolidate_stats.output_tsv
 
+    ## WT OUTPUTS
     # bam stats
     Array[File]   bam_stats                = upstream.read_length_and_quality
     Array[File]   read_length_plot         = upstream.read_length_plot
@@ -316,6 +523,14 @@ workflow humanwgs_family {
     Array[File]   mosdepth_depth_distribution_plot = upstream.mosdepth_depth_distribution_plot
     Array[String] stat_mean_depth                  = upstream.stat_mean_depth
     Array[String] inferred_sex                     = upstream.inferred_sex
+
+    # mosdepth hg002 outputs
+    Array[File]   mosdepth_hg002_summary                 = upstream.mosdepth_hg002_summary
+    Array[File]   mosdepth_hg002_region_bed              = upstream.mosdepth_hg002_region_bed
+    Array[File]   mosdepth_hg002_region_bed_index        = upstream.mosdepth_hg002_region_bed_index
+    Array[File]   mosdepth_hg002_depth_distribution_plot = upstream.mosdepth_hg002_depth_distribution_plot
+    Array[String] stat_mean_depth_hg002                  = upstream.stat_mean_depth_hg002
+    Array[String] inferred_sex_hg002                     = upstream.inferred_sex_hg002
 
     # phasing stats
     Array[File]   phase_stats           = downstream.phase_stats
@@ -399,6 +614,29 @@ workflow humanwgs_family {
     Array[File?] pharmcat_report_html    = downstream.pharmcat_report_html
     Array[File?] pharmcat_report_json    = downstream.pharmcat_report_json
 
+    # tertiary analysis outputs
+    File? pedigree                       = write_ped_phrank.pedigree
+
+    # Assembly outputs
+    # hifiasm upstream outputs
+    Array[File] asm_hap1 = upstream.asm_1
+    Array[File] asm_hap2 = upstream.asm_2
+
+    # pav outputs
+    Array[File?] pav_vcf = upstream.pav_vcf
+    Array[File?] pav_vcf_index = upstream.pav_vcf_index
+
+    # liftover outputs
+    Array[File?] asm_lifted_vcf = upstream.lifted_vcf
+    Array[File?] asm_reject_vcf = upstream.reject_vcf
+
+    # LARGE SV FILTER OUTPUTS
+    Array[File?] pav_large_sv_filtered_vcf = upstream.large_sv_filtered_vcf
+    Array[File?] pav_large_sv_filtered_vcf_index = upstream.large_sv_filtered_vcf_index
+    # confusing with joint merge
+    #Array[File] merged_assembly_aligned_sv_vcf = select_first([merge_sv_vcfs_align_assembly.merged_vcf])
+    #Array[File] merged_assembly_aligned_sv_vcf_index = select_first([merge_sv_vcfs_align_assembly.merged_vcf_index])
+
     # joint call outputs
     File? joint_small_variants_vcf       = merge_small_variant_vcfs.merged_vcf
     File? joint_small_variants_vcf_index = merge_small_variant_vcfs.merged_vcf_index
@@ -407,21 +645,52 @@ workflow humanwgs_family {
     File? joint_trgt_vcf                 = trgt_merge.merged_vcf
     File? joint_trgt_vcf_index           = trgt_merge.merged_vcf_index
 
-    # tertiary analysis outputs
-     File? pedigree                                      = write_ped_phrank.pedigree
-     File? tertiary_small_variant_filtered_vcf           = tertiary_analysis.small_variant_filtered_vcf
-     File? tertiary_small_variant_filtered_vcf_index     = tertiary_analysis.small_variant_filtered_vcf_index
-     File? tertiary_small_variant_filtered_tsv           = tertiary_analysis.small_variant_filtered_tsv
-     File? tertiary_small_variant_compound_het_vcf       = tertiary_analysis.small_variant_compound_het_vcf
-     File? tertiary_small_variant_compound_het_vcf_index = tertiary_analysis.small_variant_compound_het_vcf_index
-     File? tertiary_small_variant_compound_het_tsv       = tertiary_analysis.small_variant_compound_het_tsv
-     File? tertiary_sv_filtered_vcf                      = tertiary_analysis.sv_filtered_vcf
-     File? tertiary_sv_filtered_vcf_index                = tertiary_analysis.sv_filtered_vcf_index
-     File? tertiary_sv_filtered_tsv                      = tertiary_analysis.sv_filtered_tsv
-    
-    #annotation analysis outputs
-    File? vep_annotated_vcf                             = annotateGermline.vep_annotated_vcf
-    File? annotsv_annotated_tsv                         = annotateSV.annotsv_annotated_tsv
+    # Parent filtering outputs
+    # sample consistency table
+    File? truvari_small_variant_consistency_tsv        = truvari_consistency_small_variants.truvari_consistency_tsv
+    File? truvari_small_variant_consistency_report_txt = truvari_consistency_small_variants.truvari_consistency_report_txt
+    File? truvari_sv_consistency_tsv                   = truvari_consistency_sv.truvari_consistency_tsv
+    File? truvari_sv_consistency_report_txt            = truvari_consistency_sv.truvari_consistency_report_txt
+
+    # truvari-collapsed variants
+    Array[File]? truvari_small_variant_vcf            = bcftools_split_small_variants.split_vcfs
+    Array[File]? truvari_small_variant_vcf_index      = bcftools_split_small_variants.split_vcfs_index
+    Array[File]? truvari_sv_vcf                       = bcftools_split_sv.split_vcfs
+    Array[File]? truvari_sv_vcf_index                 = bcftools_split_sv.split_vcfs_index
+
+    Array[File]? parent_filtered_small_variant_vcf = parent_filter_small_variants.filtered_vcf
+    Array[File]? parent_filtered_sv_vcf            = parent_filter_sv.filtered_vcf
+
+    # Somatic SV calling
+    # Array[File] Severus_somatic_vcf                           = select_all(select_first([phased_severus.output_vcf]))
+    # Array[File] Severus_all_vcf                               = select_all(select_first([phased_severus.output_all_vcf]))
+    # Array[File] Severus_breakpoint_cluster                    = select_all(select_first([phased_severus.output_breakpoint_clusters]))
+    # Array[File] Severus_breakpoint_cluster_all                = select_all(select_first([phased_severus.output_breakpoint_clusters_all]))
+    # Array[File] Severus_cluster_plots                         = select_all(select_first([phased_severus.output_somatic_sv_plots]))
+
+    # Array[File] Severus_tabix_vcf                             = select_first([tabix_vcf.output_vcf])
+    # Array[File] Severus_filtered_vcf                          = select_first([recover_mate_bnd.output_vcf])
+    # Array[File] Severus_filtered_vcf_index                    = select_first([recover_mate_bnd.output_vcf_index])
+
+    # annotation analysis outputs
+    File? merged_vep_annotated_vcf                            = annotateGermline.annotated_vcf
+
+    # SV annotations only come in tsv form.
+    Array[File]? sv_annotated_tsv                             = annotate_parent_filter_sv.annotated_tsv
+    Array[File]? sv_annotated_ranked_tsv                      = select_first([prioritize_sv.annotSV_ranked_tsv])
+    Array[File]? sv_annotated_concerning_tsv                  = select_first([prioritize_sv.annotSV_concerning_tsv])
+    Array[File]? sv_annotated_ccg_tsv                         = select_first([prioritize_sv.annotSV_ccg_tsv])
+    Array[File]? sv_annotated_ccg_ranked_tsv                  = select_first([prioritize_sv.annotSV_ccg_ranked_tsv])
+
+    Array[File]? small_variant_annotated_tsv                  = prioritizeSomatic.vep_annotated_tsv
+    Array[File]? small_variant_annotated_ranked_tsv           = prioritizeSomatic.vep_annotated_ranked_tsv
+    Array[File]? small_variant_annotated_filtered_tsv         = prioritizeSomatic.vep_annotated_filtered_tsv
+
+    # Array[File] Severus_annotated_tsv                         = select_first([annotateSeverusSVfiltered.annotated_tsv])
+    # Array[File] Severus_annotated_ranked_tsv                  = select_first([prioritize_Severus.annotSV_ranked_tsv])
+    # Array[File] Severus_annotated_ccg_tsv                     = select_first([prioritize_Severus.annotSV_ccg_tsv])
+    # Array[File] Severus_annotated_ccg_ranked_tsv              = select_first([prioritize_Severus.annotSV_ccg_ranked_tsv])
+
     # workflow metadata
     String workflow_name    = "humanwgs_family"
     String workflow_version = "v2.1.1" + if defined(debug_version) then "~{"-" + debug_version}" else ""

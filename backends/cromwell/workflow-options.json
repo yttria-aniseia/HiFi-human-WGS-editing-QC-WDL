@@ -1,0 +1,8 @@
+{
+  "memory_retry_multiplier": 1.5,
+  "concurrent-job-limit": 200,
+  "final_workflow_outputs_dir": "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/wdl-outputs",
+  "use_relative_output_paths": false,
+  "jes_gcs_root": "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/cromwell_executions"
+}
+
