@@ -1,7 +1,7 @@
 #!/bin/bash
 
-export APPTAINER_CACHEDIR="/hpc/mydata/ram.ayyala/HiFi-human-WGS-editing-QC-WDL/miniwdl_cache/singularity_cache/"
-export APPTAINER_TMP_DIR=="/hpc/mydata/ram.ayyala/HiFi-human-WGS-editing-QC-WDL/miniwdl_cache/tmp"
+export APPTAINER_CACHEDIR="$PWD/miniwdl_cache/singularity_cache/"
+export APPTAINER_TMP_DIR="$PWD/miniwdl_cache/tmp"
 mkdir -p "${APPTAINER_CACHEDIR}" "${APPTAINER_TMP_DIR}"
 
 
@@ -14,10 +14,10 @@ while read -r container_url; do
        if [[ "${container_url}" == *@sha256:* ]]; then
         # SHA version
         repo_tag="${container_url%%@*}"
-        sha="${container_url#*@sha256:}"  
+        sha="${container_url#*@sha256:}"
         uri="docker://${repo_tag}@sha256:${sha}"
-        sif_filename="$(echo "${repo_tag}" | tr '/' '-')@sha256-${sha:0:12}.sif"
-    elif [[ "${container_url}" == *:* && ! "${container_url}" == *@* ]]; then  
+        sif_filename="$(echo "${repo_tag}" | tr '/' '-')@sha256_${sha}.sif"
+    elif [[ "${container_url}" == *:* && ! "${container_url}" == *@* ]]; then
         # Version tag format
         uri="docker://${container_url}"
         sif_filename="$(echo "${container_url}" | tr ':' '-' | tr '/' '-').sif"
@@ -27,16 +27,16 @@ while read -r container_url; do
         continue
     fi
 
-    #check pre-pull has already occured for this tool 
+    #check pre-pull has already occured for this tool
     if [[ -f "${singularity_cache}/${sif_filename}" ]]; then
         echo "Skipping ${container_url} as it already exists: ${sif_filename}"
         continue
     fi
-    
+
     echo "Pulling ${container_url}"
     if ! singularity pull --dir "${singularity_cache}" "${uri}"; then
         echo "ERROR: Failed to pull ${container_url}"
-        exit 1
+        continue
     fi
 
 done < "${manifest}"
