@@ -7,7 +7,6 @@
     - [Alignments, Coverage, and QC](#alignments-coverage-and-qc)
     - [Small Variants (\<50 bp)](#small-variants-50-bp)
     - [Structural Variants (≥50 bp)](#structural-variants-50-bp)
-    - [Copy Number Variants (≥100 kb)](#copy-number-variants-100-kb)
     - [Tandem Repeat Genotyping](#tandem-repeat-genotyping)
     - [Variant Phasing](#variant-phasing)
     - [Variant Calling in Dark Regions](#variant-calling-in-dark-regions)
@@ -24,37 +23,61 @@ title: singleton.wdl
 flowchart TD
   subgraph "`**Upstream of Phasing**`"
     subgraph "per-movie"
-      ubam[/"HiFi uBAM"/] --> pbmm2_align["pbmm2 align"]
-      pbmm2_align --> pbsv_discover["PBSV discover"]
+      ubam[/"HiFi uBAM"/]
+      pbmm2_align["pbmm2 align"]
     end
-    pbmm2_align --> merge_read_stats["merge read statistics"]
-    pbmm2_align --> samtools_merge["samtools merge"]
-    samtools_merge --> mosdepth["mosdepth"]
-    samtools_merge --> paraphase["Paraphase"]
-    samtools_merge --> hificnv["HiFiCNV"]
-    samtools_merge --> trgt["TRGT"]
-    samtools_merge --> trgt_dropouts["TR coverage dropouts"]
-    samtools_merge --> deepvariant["DeepVariant"]
-    samtools_merge --> hiphase["HiPhase"]
-    pbsv_discover --> pbsv_call["PBSV call"]
+    samtools_merge["samtools merge"]
+    mosdepth["mosdepth"]
+    paraphase["Paraphase"]
+    mitorsaw["MitorSaw"]
+    trgt["TRGT"]
+    trgt_dropouts["TR coverage dropouts"]
+    deepvariant["DeepVariant"]
+    sawfish_discover["Sawfish discover"]
+    sawfish_call["Sawfish call"]
   end
   subgraph "`**Phasing and Downstream**`"
-    deepvariant --> hiphase
-    trgt --> hiphase
-    pbsv_call --> hiphase
-    hiphase --> bcftools_roh["bcftools roh"]
-    hiphase --> bcftools_stats["bcftools stats\n(small variants)"]
-    hiphase --> sv_stats["SV stats"]
-    hiphase --> cpg_pileup["5mCpG pileup"]
-    hiphase --> starphase["StarPhase"]
-    hiphase --> pharmcat["PharmCat"]
-    starphase --> pharmcat
+    hiphase["HiPhase"]
+    bam_stats["BAM stats"]
+    bcftools_roh["bcftools roh"]
+    bcftools_stats["bcftools stats\n(small variants)"]
+    sv_stats["SV stats"]
+    cpg_pileup["5mCpG pileup"]
+    starphase["StarPhase"]
+    pharmcat["PharmCat"]
   end
   subgraph "`**Tertiary Analysis**`"
-    hiphase --> slivar_small_variants["slivar small variants"]
-    hiphase --> svpack["svpack filter and annotate"]
-    svpack --> slivar_svpack["slivar svpack tsv"]
+    slivar_small_variants["slivar small variants"]
+    svpack["svpack filter and annotate"]
+    slivar_svpack["slivar svpack tsv"]
   end
+
+  ubam --> pbmm2_align --> samtools_merge
+  samtools_merge --> mosdepth
+  samtools_merge --> paraphase
+  samtools_merge --> mitorsaw
+  samtools_merge --> trgt
+  samtools_merge --> trgt_dropouts
+  samtools_merge --> deepvariant
+  samtools_merge --> sawfish_discover
+  samtools_merge --> hiphase
+  deepvariant --> sawfish_discover
+  deepvariant --> hiphase
+  sawfish_discover --> sawfish_call --> hiphase
+  trgt --> hiphase
+
+  hiphase --> bam_stats
+  hiphase --> bcftools_roh
+  hiphase --> bcftools_stats
+  hiphase --> sv_stats
+  hiphase --> cpg_pileup
+  hiphase --> starphase
+  hiphase --> pharmcat
+  starphase --> pharmcat
+
+  hiphase --> slivar_small_variants
+  hiphase --> svpack
+  svpack --> slivar_svpack
 ```
 
 ## Inputs
@@ -70,6 +93,7 @@ flowchart TD
 | Boolean | gpu | Use GPU when possible<br/><br/>Default: `false` | [GPU support](./gpu.md#gpu-support) |
 | String | backend | Backend where the workflow will be executed<br/><br/>`["GCP", "Azure", "AWS-AGC", "AWS-HealthOmics", "HPC"]` |  |
 | String? | zones | Zones where compute will take place; required if backend is set to 'AWS' or 'GCP'. | [Determining available zones in GCP](./backends/gcp.md#determining-available-zones) |
+| String? | cpuPlatform | Minimum CPU platform to use for tasks on GCP | Optional, only necessary in certain zones lacking n1 nodes. |
 | String? | gpuType | GPU type to use; required if gpu is set to `true` for cloud backends; must match backend  | [Available GPU types](./gpu.md#gpu-types) |
 | String? | container_registry | Container registry where workflow images are hosted.<br/><br/>Default: `"quay.io/pacbio"` | If omitted, [PacBio's public Quay.io registry](https://quay.io/organization/pacbio) will be used.<br/><br/>Custom container_registry must be set if backend is set to 'AWS-HealthOmics'. |
 | Boolean | preemptible | Where possible, run tasks preemptibly<br/><br/>`[true, false]`<br/><br/>Default: `true` | If set to `true`, run tasks preemptibly where possible. If set to `false`, on-demand VMs will be used for every task. Ignored if backend is set to HPC. |
@@ -82,6 +106,8 @@ flowchart TD
 | ---- | ---- | ----------- | ----- |
 | String | workflow_name | Workflow name |  |
 | String | workflow_version | Workflow version |  |
+| Array\[String\] | msg | Messages from the workflow |  |
+| File | msg_file | File containing messages from the workflow |  |
 | File | stats_file | Table of summary statistics |  |
 | File | bam_stats | BAM stats | Per-read length and read-quality |
 | File | read_length_plot | Read length plot |  |
@@ -131,22 +157,22 @@ flowchart TD
 | String | stat_sv_INS_count | Structural variant INS count | (PASS variants) |
 | String | stat_sv_INV_count | Structural variant INV count | (PASS variants) |
 | String | stat_sv_BND_count | Structural variant BND count | (PASS variants) |
+| String | stat_sv_SWAP_count | Structural variant sequence swap events | (PASS variants) |
+| File | sv_supporting_reads | Supporting reads for structural variants |  |
+| File | sv_copynum_bedgraph | CNV copy number BEDGraph |  |
+| File | sv_depth_bw | CNV depth BigWig |  |
+| File | sv_gc_bias_corrected_depth_bw | CNV GC-bias corrected depth BigWig |  |
+| File | sv_maf_bw | CNV MAF BigWig |  |
 | File | bcftools_roh_out | ROH calling |  `bcftools roh` |
 | File | bcftools_roh_bed | Generated from above, without filtering |  |
 
-### Copy Number Variants (≥100 kb)
+### Mitochondrial variants and haplotypes
 
 | Type | Name | Description | Notes |
 | ---- | ---- | ----------- | ----- |
-| File | cnv_vcf | CNV VCF |  |
-| File | cnv_vcf_index | Index for CNV VCF |  |
-| File | cnv_copynum_bedgraph | CNV copy number BEDGraph |  |
-| File | cnv_depth_bw | CNV depth BigWig |  |
-| File | cnv_maf_bw | CNV MAF BigWig |  |
-| String | stat_cnv_DUP_count | Count of DUP events | (for PASS variants) |
-| String | stat_cnv_DEL_count | Count of DEL events | (PASS variants) |
-| String | stat_cnv_DUP_sum | Sum of DUP bp | (PASS variants) |
-| String | stat_cnv_DEL_sum | Sum of DEL bp | (PASS variants) |
+| File | mitorsaw_vcf | Mitochondrial variant VCF |  |
+| File | mitorsaw_vcf_index | Index for mitochondrial variant VCF |  |
+| File | mitorsaw_hap_stats | Mitochondrial haplotype stats |  |
 
 ### Tandem Repeat Genotyping
 
@@ -174,9 +200,9 @@ flowchart TD
 
 | Type | Name | Description | Notes |
 | ---- | ---- | ----------- | ----- |
-| File | paraphase_output_json | Paraphase output JSON |  |
-| File | paraphase_realigned_bam | Paraphase realigned BAM |  |
-| File | paraphase_realigned_bam_index |  |  |
+| File? | paraphase_output_json | Paraphase output JSON |  |
+| File? | paraphase_realigned_bam | Paraphase realigned BAM |  |
+| File? | paraphase_realigned_bam_index |  |  |
 | File? | paraphase_vcfs | Paraphase VCFs | Compressed as `.tar.gz` |
 
 ### 5mCpG Methylation Calling

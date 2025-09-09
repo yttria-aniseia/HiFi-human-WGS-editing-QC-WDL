@@ -46,7 +46,7 @@ task bcftools_norm_split_multiallelic {
     }
     
     runtime {
-        docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
+        docker: "quay.io/biocontainers/bcftools@sha256:065115d2fbdcba9b9a9d360fe9f024ba829de2e64309a637a274ed47e0af17db"
         cpu: threads
         memory: "~{mem_gb} GB"
         disk: file_size + " GB"
