@@ -111,8 +111,7 @@ task bcftools_merge_assembly_align {
     set -euo pipefail
     for vcf in ~{sep=' ' vcfs}; do
         cp "$vcf" ./
-        # Regenerate index to ensure compatibility
-        tabix -p vcf "$(basename "$vcf")"
+        bcftools index --tbi "$(basename $vcf)"
     done
 
     bcftools --version
@@ -120,16 +119,15 @@ task bcftools_merge_assembly_align {
       --allow-overlaps \
       --remove-duplicates \
       ~{if threads > 1 then "--threads " + (threads - 1) else ""} \
-      --output-type z \
-      --output ~{out_prefix}.vcf.gz \
-      *.vcf.gz
+      *.vcf.gz | \
+    bcftools filter -e 'SVCLAIM="D"' -O z -Wtbi -o "~{out_prefix}.vcf.gz"
+    # ^ filter out sawfish depth-evidenced CNV records
 
     #bcftools merge \
     #  ~{if threads > 1 then "--threads " + (threads - 1) else ""} \
     #  --output-type z \
     #  --output ~{out_prefix}.vcf.gz \
     #  *.vcf.gz
-    bcftools index --tbi ~{out_prefix}.vcf.gz
   >>>
 
   output {

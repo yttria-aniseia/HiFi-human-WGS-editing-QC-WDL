@@ -8,8 +8,6 @@ import "../wdl-common/wdl/tasks/samtools.wdl" as Samtools
 import "../wdl-common/wdl/tasks/mosdepth.wdl" as Mosdepth
 import "../wdl-common/wdl/tasks/trgt.wdl" as Trgt
 import "../wdl-common/wdl/tasks/paraphase.wdl" as Paraphase
-import "../wdl-common/wdl/tasks/hificnv.wdl" as Hificnv
-import "../edit-qc/plot_hificnv.wdl" as plot_hificnv
 import "../edit-qc/samtools_aux.wdl" as Samtools_aux
 import "../edit-qc/mosdepth_himem.wdl" as Mosdepth_himem
 import "../assembly/assembly.wdl" as Assembly
@@ -86,13 +84,6 @@ workflow upstream {
         ref_name           = ref_map["hg002_name"],
         runtime_attributes = default_runtime_attributes
     }
-  }
-
-  call MergeBamStats.merge_bam_stats {
-    input:
-      sample_id            = sample_id,
-      bam_stats            = pbmm2_align.bam_stats,
-      runtime_attributes   = default_runtime_attributes
   }
 
   # merge aligned bams if there are multiple

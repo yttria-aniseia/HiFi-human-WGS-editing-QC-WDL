@@ -13,6 +13,7 @@ import "edit-qc/bcftools_norm.wdl" as Bcftools_norm
 import "edit-qc/truvari_parent_filter.wdl" as TruvariParentFilter
 import "somatic_ports/somatic_annotation.wdl" as Somatic_annotation
 import "somatic_ports/somatic_calling.wdl" as Somatic_calling
+
 workflow humanwgs_family {
   meta {
     description: "PacBio HiFi human whole genome sequencing pipeline, with joint calling for related samples."
@@ -150,7 +151,6 @@ workflow humanwgs_family {
     ]
   }
 
-  }
     ####################################
     # 1b)         JOINT:                #
     ####################################
@@ -175,7 +175,7 @@ workflow humanwgs_family {
     call Bcftools_aux.bcftools_merge_assembly_align as merge_sv_vcfs_align_assembly {
       input:
       vcfs = select_all([upstream.large_sv_filtered_vcf[sample_index], select_all(select_first([joint.split_joint_structural_variant_vcfs,upstream.sv_vcf]))[sample_index]]),
-      out_prefix  = "~{sid[sample_index]}.merged_structural_variants",
+      out_prefix  = "~{sample_id[sample_index]}.merged_structural_variants",
       runtime_attributes = default_runtime_attributes
     }
   }
@@ -200,17 +200,6 @@ workflow humanwgs_family {
         default_runtime_attributes = default_runtime_attributes
     }
   }
-
-  if (!single_sample) {
-    call Bcftools.bcftools_merge as merge_small_variant_vcfs {
-      input:
-      vcfs               = downstream.phased_small_variant_vcf,
-      vcf_indices        = downstream.phased_small_variant_vcf_index,
-      out_prefix         = "~{family.family_id}.joint.~{ref_map['name']}.small_variants.phased",
-      runtime_attributes = default_runtime_attributes
-    }
-  }
-
 
     #############################################################
     #       MERGING SVs and small variants ACROSS SAMPLES       #
@@ -278,21 +267,13 @@ workflow humanwgs_family {
     scatter (sample in family.samples) {
       Array[File] hifi_reads = sample.hifi_reads
     }
-    call Write_ped_phrank.write_ped_phrank {
-      input:
-      id                 = family.family_id,
-      family             = family,
-      phenotypes         = phenotypes,
-      disk_size          = ceil(size(flatten(hifi_reads), "GB")) + 10,
-      runtime_attributes = default_runtime_attributes
-    }
 
     ####################################
     # 3a)      SEVERUS & ANNOTATION    #
     ####################################
-    Map[String, File] bam_files_by_id = as_map(zip(sid, downstream.merged_haplotagged_bam))
-    Map[String, File] bam_index_by_id = as_map(zip(sid, downstream.merged_haplotagged_bam_index))
-    Map[String, Int] sidx_by_id = as_map(zip(sid, range(length(sid))))
+    Map[String, File] bam_files_by_id = as_map(zip(sample_id, downstream.merged_haplotagged_bam))
+    Map[String, File] bam_index_by_id = as_map(zip(sample_id, downstream.merged_haplotagged_bam_index))
+    Map[String, Int] sidx_by_id = as_map(zip(sample_id, range(length(sample_id))))
 
     call Bcftools_norm.bcftools_norm_split_multiallelic as normalize_small_variants {
       input:
@@ -641,9 +622,6 @@ workflow humanwgs_family {
     Array[File?] pharmcat_phenotype_json = downstream.pharmcat_phenotype_json
     Array[File?] pharmcat_report_html    = downstream.pharmcat_report_html
     Array[File?] pharmcat_report_json    = downstream.pharmcat_report_json
-
-    # tertiary analysis outputs
-    File? pedigree                       = write_ped_phrank.pedigree
 
     # Assembly outputs
     # hifiasm upstream outputs

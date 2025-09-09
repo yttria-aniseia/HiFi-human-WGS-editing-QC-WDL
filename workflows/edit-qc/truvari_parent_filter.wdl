@@ -102,7 +102,12 @@ task bcftools_split_for_truvari {
 
     # Step 2: bcftools split to create per-sample VCFs, excluding uncalled and reference genotypes
     mkdir -p truvari_merge_split
-    bcftools +split -W ~{truvari_merge_vcf} \
+    bcftools sort \
+      --max-mem "~{mem_gb}G" \
+      -O z \
+      ~{truvari_merge_vcf} \
+      | \
+    bcftools +split -W \
       -Oz \
       -o truvari_merge_split \
       -e 'GT="mis" || GT="ref"'
