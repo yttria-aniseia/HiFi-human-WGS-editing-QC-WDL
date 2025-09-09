@@ -6,6 +6,7 @@ import "../wdl-common/wdl/tasks/bam_stats.wdl" as Bamstats
 import "../wdl-common/wdl/tasks/trgt.wdl" as Trgt
 import "../wdl-common/wdl/tasks/bcftools.wdl" as Bcftools
 import "../wdl-common/wdl/tasks/cpg_pileup.wdl" as Cpgpileup
+import "../wdl-common/wdl/tasks/methbat.wdl" as Methbat
 import "../wdl-common/wdl/tasks/pbstarphase.wdl" as Pbstarphase
 import "../wdl-common/wdl/workflows/pharmcat/pharmcat.wdl" as Pharmcat
 
@@ -36,6 +37,9 @@ workflow downstream {
     trgt_vcf_index: {
       name: "TRGT VCF index"
     }
+    trgt_catalog: {
+      name: "TRGT tandem repeat catalog BED"
+    }
     aligned_bam: {
       name: "Aligned BAM"
     }
@@ -62,6 +66,7 @@ workflow downstream {
     File sv_vcf_index
     File trgt_vcf
     File trgt_vcf_index
+    File trgt_catalog
 
     File aligned_bam
     File aligned_bam_index
@@ -116,7 +121,7 @@ workflow downstream {
     input: 
       aligned_bam        = hiphase.haplotagged_bam,
       aligned_bam_index  = hiphase.haplotagged_bam_index,
-      trgt_bed           = ref_map["trgt_tandem_repeat_bed"], # !FileCoercion
+      trgt_bed           = trgt_catalog,
       out_prefix         = "~{sample_id}.~{ref_map['name']}",
       runtime_attributes = default_runtime_attributes
   }
@@ -144,6 +149,24 @@ workflow downstream {
       ref_fasta             = ref_map["fasta"],                  # !FileCoercion
       ref_index             = ref_map["fasta_index"],            # !FileCoercion
       runtime_attributes    = default_runtime_attributes
+  }
+
+  Array[File] cpg_pileup_beds = select_all([
+    cpg_pileup.combined_bed,
+    cpg_pileup.hap1_bed,
+    cpg_pileup.hap2_bed
+  ])
+
+  if (length(cpg_pileup_beds) > 0) {
+    # If any cpg_pileup_beds are generated, we can run methbat
+    call Methbat.methbat {
+      input:
+        sample_prefix           = "~{sample_id}.~{ref_map['name']}.cpg_pileup",
+        methylation_pileup_beds = cpg_pileup_beds,
+        region_tsv              = ref_map["methbat_region_tsv"],     # !FileCoercion
+        out_prefix              = "~{sample_id}.~{ref_map['name']}",
+        runtime_attributes      = default_runtime_attributes
+    }
   }
 
   call Pbstarphase.pbstarphase_diplotype {
@@ -193,19 +216,22 @@ workflow downstream {
     String stat_phase_block_ng50          = hiphase.stat_phase_block_ng50
 
     # bam stats
-    File   bam_statistics           = bam_stats.bam_statistics
-    File   read_length_plot         = bam_stats.read_length_plot
-    File?  read_quality_plot        = bam_stats.read_quality_plot
-    File   mapq_distribution_plot   = bam_stats.mapq_distribution_plot
-    File   mg_distribution_plot     = bam_stats.mg_distribution_plot
-    String stat_num_reads           = bam_stats.stat_num_reads
-    String stat_read_length_mean    = bam_stats.stat_read_length_mean
-    String stat_read_length_median  = bam_stats.stat_read_length_median
-    String stat_read_quality_mean   = bam_stats.stat_read_quality_mean
-    String stat_read_quality_median = bam_stats.stat_read_quality_median
-    String stat_mapped_read_count   = bam_stats.stat_mapped_read_count
-    String stat_mapped_percent      = bam_stats.stat_mapped_percent
-    File   trgt_coverage_dropouts   = coverage_dropouts.dropouts
+    File   bam_statistics                      = bam_stats.bam_statistics
+    File   read_length_plot                    = bam_stats.read_length_plot
+    File?  read_quality_plot                   = bam_stats.read_quality_plot
+    File   mapq_distribution_plot              = bam_stats.mapq_distribution_plot
+    File   mg_distribution_plot                = bam_stats.mg_distribution_plot
+    String stat_read_count                     = bam_stats.stat_read_count
+    String stat_read_length_mean               = bam_stats.stat_read_length_mean
+    String stat_read_length_median             = bam_stats.stat_read_length_median
+    String stat_read_length_n50                = bam_stats.stat_read_length_n50
+    String stat_read_quality_mean              = bam_stats.stat_read_quality_mean
+    String stat_read_quality_median            = bam_stats.stat_read_quality_median
+    String stat_mapped_read_count              = bam_stats.stat_mapped_read_count
+    String stat_mapped_read_percent            = bam_stats.stat_mapped_read_percent
+    String stat_gap_compressed_identity_mean   = bam_stats.stat_gap_compressed_identity_mean
+    String stat_gap_compressed_identity_median = bam_stats.stat_gap_compressed_identity_median
+    File   trgt_coverage_dropouts              = coverage_dropouts.dropouts
 
     # small variant stats
     File   small_variant_stats     = bcftools_stats_roh_small_variants.stats
@@ -226,19 +252,23 @@ workflow downstream {
     String stat_sv_BND_count  = sv_stats.stat_sv_BND_count
     String stat_sv_SWAP_count = sv_stats.stat_sv_SWAP_count
 
-    # cpg_pileup outputs
-    File?  cpg_combined_bed        = cpg_pileup.combined_bed
-    File?  cpg_combined_bed_index  = cpg_pileup.combined_bed_index
-    File?  cpg_hap1_bed            = cpg_pileup.hap1_bed
-    File?  cpg_hap1_bed_index      = cpg_pileup.hap1_bed_index
-    File?  cpg_hap2_bed            = cpg_pileup.hap2_bed
-    File?  cpg_hap2_bed_index      = cpg_pileup.hap2_bed_index
-    File?  cpg_combined_bw         = cpg_pileup.combined_bw
-    File?  cpg_hap1_bw             = cpg_pileup.hap1_bw
-    File?  cpg_hap2_bw             = cpg_pileup.hap2_bw
-    String stat_hap1_cpg_count     = cpg_pileup.stat_hap1_cpg_count
-    String stat_hap2_cpg_count     = cpg_pileup.stat_hap2_cpg_count
-    String stat_combined_cpg_count = cpg_pileup.stat_combined_cpg_count
+    # methylation outputs and profile
+    File?  cpg_combined_bed                = cpg_pileup.combined_bed
+    File?  cpg_combined_bed_index          = cpg_pileup.combined_bed_index
+    File?  cpg_hap1_bed                    = cpg_pileup.hap1_bed
+    File?  cpg_hap1_bed_index              = cpg_pileup.hap1_bed_index
+    File?  cpg_hap2_bed                    = cpg_pileup.hap2_bed
+    File?  cpg_hap2_bed_index              = cpg_pileup.hap2_bed_index
+    File?  cpg_combined_bw                 = cpg_pileup.combined_bw
+    File?  cpg_hap1_bw                     = cpg_pileup.hap1_bw
+    File?  cpg_hap2_bw                     = cpg_pileup.hap2_bw
+    String stat_hap1_cpg_count             = cpg_pileup.stat_hap1_cpg_count
+    String stat_hap2_cpg_count             = cpg_pileup.stat_hap2_cpg_count
+    String stat_combined_cpg_count         = cpg_pileup.stat_combined_cpg_count
+    File?  methbat_profile                 = methbat.profile
+    String stat_methbat_methylated_count   = select_first([methbat.stat_methbat_methylated_count, "0"])
+    String stat_methbat_unmethylated_count = select_first([methbat.stat_methbat_unmethylated_count, "0"])
+    String stat_methbat_asm_count          = select_first([methbat.stat_methbat_asm_count, "0"])
 
     # pbstarphase outputs
     File pbstarphase_json = pbstarphase_diplotype.out_json

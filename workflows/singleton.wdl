@@ -2,11 +2,11 @@ version 1.0
 
 import "humanwgs_structs.wdl"
 import "wdl-common/wdl/workflows/backend_configuration/backend_configuration.wdl" as BackendConfiguration
+import "process_trgt_catalog/process_trgt_catalog.wdl" as ProcessTrgtCatalog
 import "upstream/upstream.wdl" as Upstream
 import "downstream/downstream.wdl" as Downstream
 import "tertiary/tertiary.wdl" as TertiaryAnalysis
 import "wdl-common/wdl/tasks/utilities.wdl" as Utilities
-
 
 workflow humanwgs_singleton {
   meta {
@@ -23,6 +23,9 @@ workflow humanwgs_singleton {
     }
     hifi_reads: {
       name: "Array of paths to HiFi reads in unaligned BAM format."
+    }
+    fail_reads: {
+      name: "Array of paths to failed reads in unaligned BAM format; optional"
     }
     phenotypes: {
       name: "Comma-delimited list of HPO codes for phenotypes"
@@ -71,6 +74,7 @@ workflow humanwgs_singleton {
     String sample_id
     String? sex
     Array[File] hifi_reads
+    Array[File]? fail_reads
 
     String phenotypes = "HP:0000001"
 
@@ -105,13 +109,28 @@ workflow humanwgs_singleton {
 
   RuntimeAttributes default_runtime_attributes = if preemptible then backend_configuration.spot_runtime_attributes else backend_configuration.on_demand_runtime_attributes
 
+  Map[String, String] ref_map = read_map(ref_map_file)
+
+  call ProcessTrgtCatalog.process_trgt_catalog {
+    input:
+      trgt_catalog               = ref_map["trgt_tandem_repeat_bed"],  # !FileCoercion
+      ref_fasta                  = ref_map["fasta"],                   # !FileCoercion
+      ref_index                  = ref_map["fasta_index"],             # !FileCoercion
+      default_runtime_attributes = default_runtime_attributes
+  }
+
   call Upstream.upstream {
     input:
       sample_id                     = sample_id,
       sex                           = sex,
       hifi_reads                    = hifi_reads,
+      fail_reads                    = fail_reads,
       ref_map_file                  = ref_map_file,
       max_reads_per_alignment_chunk = max_reads_per_alignment_chunk,
+      trgt_catalog                  = process_trgt_catalog.full_catalog,
+      fail_reads_bed                = process_trgt_catalog.include_fail_reads_bed,
+      fail_reads_bait_fasta         = process_trgt_catalog.fail_reads_bait_fasta,
+      fail_reads_bait_index         = process_trgt_catalog.fail_reads_bait_index,
       single_sample                 = true,
       gpu                           = gpu,
       default_runtime_attributes    = default_runtime_attributes
@@ -126,6 +145,7 @@ workflow humanwgs_singleton {
       sv_vcf_index               = select_first([upstream.sv_vcf_index]),
       trgt_vcf                   = upstream.trgt_vcf,
       trgt_vcf_index             = upstream.trgt_vcf_index,
+      trgt_catalog               = process_trgt_catalog.full_catalog,
       aligned_bam                = upstream.out_bam,
       aligned_bam_index          = upstream.out_bam_index,
       pharmcat_min_coverage      = pharmcat_min_coverage,
@@ -164,41 +184,47 @@ workflow humanwgs_singleton {
     }
   }
 
-  Map[String, Array[String]] stats = {
-    'sample_id': [sample_id],
-    'num_reads': [downstream.stat_num_reads],
-    'read_length_mean': [downstream.stat_read_length_mean],
-    'read_length_median': [downstream.stat_read_length_median],
-    'read_quality_mean': [downstream.stat_read_quality_mean],
-    'read_quality_median': [downstream.stat_read_quality_median],
-    'mapped_read_count': [downstream.stat_mapped_read_count],
-    'mapped_percent': [downstream.stat_mapped_percent],
-    'mean_depth': [upstream.stat_mean_depth],
-    'inferred_sex': [upstream.inferred_sex],
-    'stat_phased_basepairs': [downstream.stat_phased_basepairs],
-    'phase_block_ng50': [downstream.stat_phase_block_ng50],
-    'cpg_combined_count': [downstream.stat_combined_cpg_count],
-    'cpg_hap1_count': [downstream.stat_hap1_cpg_count],
-    'cpg_hap2_count': [downstream.stat_hap2_cpg_count],
-    'SNV_count': [downstream.stat_SNV_count],
-    'TSTV_ratio': [downstream.stat_TSTV_ratio],
-    'HETHOM_ratio': [downstream.stat_HETHOM_ratio],
-    'INDEL_count': [downstream.stat_INDEL_count],
-    'sv_DUP_count': [downstream.stat_sv_DUP_count],
-    'sv_DEL_count': [downstream.stat_sv_DEL_count],
-    'sv_INS_count': [downstream.stat_sv_INS_count],
-    'sv_INV_count': [downstream.stat_sv_INV_count],
-    'sv_SWAP_count': [downstream.stat_sv_SWAP_count],
-    'sv_BND_count': [downstream.stat_sv_BND_count],
-    'trgt_genotyped_count': [upstream.stat_trgt_genotyped_count],
-    'trgt_uncalled_count': [upstream.stat_trgt_uncalled_count]
-  }
+  Array[Array[String]] stats = [
+    ['sample_id', sample_id],
+    ['read_count', downstream.stat_read_count],
+    ['read_length_mean', downstream.stat_read_length_mean],
+    ['read_length_median', downstream.stat_read_length_median],
+    ['read_length_n50', downstream.stat_read_length_n50],
+    ['read_quality_mean', downstream.stat_read_quality_mean],
+    ['read_quality_median', downstream.stat_read_quality_median],
+    ['mapped_read_count', downstream.stat_mapped_read_count],
+    ['mapped_read_percent', downstream.stat_mapped_read_percent],
+    ['gap_compressed_identity_mean', downstream.stat_gap_compressed_identity_mean],
+    ['gap_compressed_identity_median', downstream.stat_gap_compressed_identity_median],
+    ['depth_mean', upstream.stat_depth_mean],
+    ['inferred_sex', upstream.inferred_sex],
+    ['stat_phased_basepairs', downstream.stat_phased_basepairs],
+    ['phase_block_ng50', downstream.stat_phase_block_ng50],
+    ['cpg_combined_count', downstream.stat_combined_cpg_count],
+    ['cpg_hap1_count', downstream.stat_hap1_cpg_count],
+    ['cpg_hap2_count', downstream.stat_hap2_cpg_count],
+    ['methbat_methylated_count', downstream.stat_methbat_methylated_count],
+    ['methbat_unmethylated_count', downstream.stat_methbat_unmethylated_count],
+    ['methbat_asm_count', downstream.stat_methbat_asm_count],
+    ['SNV_count', downstream.stat_SNV_count],
+    ['TSTV_ratio', downstream.stat_TSTV_ratio],
+    ['HETHOM_ratio', downstream.stat_HETHOM_ratio],
+    ['INDEL_count', downstream.stat_INDEL_count],
+    ['sv_DUP_count', downstream.stat_sv_DUP_count],
+    ['sv_DEL_count', downstream.stat_sv_DEL_count],
+    ['sv_INS_count', downstream.stat_sv_INS_count],
+    ['sv_INV_count', downstream.stat_sv_INV_count],
+    ['sv_SWAP_count', downstream.stat_sv_SWAP_count],
+    ['sv_BND_count', downstream.stat_sv_BND_count],
+    ['trgt_genotyped_count', upstream.stat_trgt_genotyped_count],
+    ['trgt_uncalled_count', upstream.stat_trgt_uncalled_count]
+  ]
 
   call Utilities.consolidate_stats {
     input:
       id                 = sample_id,
       stats              = stats,
-      msg_array          = flatten([upstream.msg]),
+      msg_array          = flatten([process_trgt_catalog.msg, upstream.msg]),
       runtime_attributes = default_runtime_attributes
   }
 
@@ -208,18 +234,21 @@ workflow humanwgs_singleton {
     File msg_file   = consolidate_stats.messages
 
     # bam stats
-    File   bam_statistics           = downstream.bam_statistics
-    File   read_length_plot         = downstream.read_length_plot
-    File?  read_quality_plot        = downstream.read_quality_plot
-    File   mapq_distribution_plot   = downstream.mapq_distribution_plot
-    File   mg_distribution_plot     = downstream.mg_distribution_plot
-    String stat_num_reads           = downstream.stat_num_reads
-    String stat_read_length_mean    = downstream.stat_read_length_mean
-    String stat_read_length_median  = downstream.stat_read_length_median
-    String stat_read_quality_mean   = downstream.stat_read_quality_mean
-    String stat_read_quality_median = downstream.stat_read_quality_median
-    String stat_mapped_read_count   = downstream.stat_mapped_read_count
-    String stat_mapped_percent      = downstream.stat_mapped_percent
+    File   bam_statistics                      = downstream.bam_statistics
+    File   read_length_plot                    = downstream.read_length_plot
+    File?  read_quality_plot                   = downstream.read_quality_plot
+    File   mapq_distribution_plot              = downstream.mapq_distribution_plot
+    File   mg_distribution_plot                = downstream.mg_distribution_plot
+    String stat_read_count                     = downstream.stat_read_count
+    String stat_read_length_mean               = downstream.stat_read_length_mean
+    String stat_read_length_median             = downstream.stat_read_length_median
+    String stat_read_length_n50                = downstream.stat_read_length_n50
+    String stat_read_quality_mean              = downstream.stat_read_quality_mean
+    String stat_read_quality_median            = downstream.stat_read_quality_median
+    String stat_mapped_read_count              = downstream.stat_mapped_read_count
+    String stat_mapped_read_percent            = downstream.stat_mapped_read_percent
+    String stat_gap_compressed_identity_mean   = downstream.stat_gap_compressed_identity_mean
+    String stat_gap_compressed_identity_median = downstream.stat_gap_compressed_identity_median
 
     # merged, haplotagged alignments
     File   merged_haplotagged_bam       = downstream.merged_haplotagged_bam
@@ -230,7 +259,7 @@ workflow humanwgs_singleton {
     File   mosdepth_region_bed              = upstream.mosdepth_region_bed
     File   mosdepth_region_bed_index        = upstream.mosdepth_region_bed_index
     File   mosdepth_depth_distribution_plot = upstream.mosdepth_depth_distribution_plot
-    String stat_mean_depth                  = upstream.stat_mean_depth
+    String stat_depth_mean                  = upstream.stat_depth_mean
     String inferred_sex                     = upstream.inferred_sex
 
     # phasing stats
@@ -240,19 +269,23 @@ workflow humanwgs_singleton {
     String stat_phased_basepairs = downstream.stat_phased_basepairs
     String stat_phase_block_ng50 = downstream.stat_phase_block_ng50
 
-    # cpg_pileup outputs
-    File?  cpg_combined_bed        = downstream.cpg_combined_bed
-    File?  cpg_combined_bed_index  = downstream.cpg_combined_bed_index
-    File?  cpg_hap1_bed            = downstream.cpg_hap1_bed
-    File?  cpg_hap1_bed_index      = downstream.cpg_hap1_bed_index
-    File?  cpg_hap2_bed            = downstream.cpg_hap2_bed
-    File?  cpg_hap2_bed_index      = downstream.cpg_hap2_bed_index
-    File?  cpg_combined_bw         = downstream.cpg_combined_bw
-    File?  cpg_hap1_bw             = downstream.cpg_hap1_bw
-    File?  cpg_hap2_bw             = downstream.cpg_hap2_bw
-    String stat_cpg_hap1_count     = downstream.stat_hap1_cpg_count
-    String stat_cpg_hap2_count     = downstream.stat_hap2_cpg_count
-    String stat_cpg_combined_count = downstream.stat_combined_cpg_count
+    # methylation outputs and profile
+    File?   cpg_combined_bed                = downstream.cpg_combined_bed
+    File?   cpg_combined_bed_index          = downstream.cpg_combined_bed_index
+    File?   cpg_hap1_bed                    = downstream.cpg_hap1_bed
+    File?   cpg_hap1_bed_index              = downstream.cpg_hap1_bed_index
+    File?   cpg_hap2_bed                    = downstream.cpg_hap2_bed
+    File?   cpg_hap2_bed_index              = downstream.cpg_hap2_bed_index
+    File?   cpg_combined_bw                 = downstream.cpg_combined_bw
+    File?   cpg_hap1_bw                     = downstream.cpg_hap1_bw
+    File?   cpg_hap2_bw                     = downstream.cpg_hap2_bw
+    String  stat_cpg_hap1_count             = downstream.stat_hap1_cpg_count
+    String  stat_cpg_hap2_count             = downstream.stat_hap2_cpg_count
+    String  stat_cpg_combined_count         = downstream.stat_combined_cpg_count
+    File?   methbat_profile                 = downstream.methbat_profile
+    String stat_methbat_methylated_count   = downstream.stat_methbat_methylated_count
+    String stat_methbat_unmethylated_count = downstream.stat_methbat_unmethylated_count
+    String stat_methbat_asm_count          = downstream.stat_methbat_asm_count
 
     # sv outputs
     File phased_sv_vcf                 = downstream.phased_sv_vcf
@@ -262,6 +295,7 @@ workflow humanwgs_singleton {
     File sv_depth_bw                   = select_first([upstream.sv_depth_bw])
     File sv_gc_bias_corrected_depth_bw = select_first([upstream.sv_gc_bias_corrected_depth_bw])
     File sv_maf_bw                     = select_first([upstream.sv_maf_bw])
+    File sv_copynum_summary            = select_first([upstream.sv_copynum_summary])
 
     # sv stats
     String stat_sv_DUP_count  = downstream.stat_sv_DUP_count
@@ -329,12 +363,13 @@ workflow humanwgs_singleton {
     # qc messages
     Array[String] msg = flatten(
       [
+        process_trgt_catalog.msg,
         upstream.msg
       ]
     )
 
     # workflow metadata
     String workflow_name    = "humanwgs_singleton"
-    String workflow_version = "v3.0.2" + if defined(debug_version) then "~{"-" + debug_version}" else ""
+    String workflow_version = "v3.1.0" + if defined(debug_version) then "~{"-" + debug_version}" else ""
   }
 }
