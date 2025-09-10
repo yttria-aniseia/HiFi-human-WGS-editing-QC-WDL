@@ -21,12 +21,23 @@
 title: singleton.wdl
 ---
 flowchart TD
+  subgraph "create fail_reads bait FASTA"
+    trgt_catalog["TRGT catalog BED"]
+    bait_fasta["create bait FASTA"]
+  end
   subgraph "`**Upstream of Phasing**`"
-    subgraph "per-movie"
+    subgraph "per hifi_reads uBAM"
       ubam[/"HiFi uBAM"/]
       pbmm2_align["pbmm2 align"]
     end
+    subgraph "per fail_reads uBAM"
+      fail_ubam[/"fail reads uBAM (if provided)"/]
+      bait_fail_reads["baited fail reads (if fail_reads provided)"]
+      pbmm2_align_fail_reads["pbmm2 align baited fail_reads (if fail_reads provided)"]
+      filter_fail_reads["filter fail_reads alignments (if fail_reads provided)"]
+    end
     samtools_merge["samtools merge"]
+    samtools_merge_fail_reads["samtools merge hifi_reads and fail_reads"]
     mosdepth["mosdepth"]
     paraphase["Paraphase"]
     mitorsaw["MitorSaw"]
@@ -43,6 +54,7 @@ flowchart TD
     bcftools_stats["bcftools stats\n(small variants)"]
     sv_stats["SV stats"]
     cpg_pileup["5mCpG pileup"]
+    methbat["MethBat"]
     starphase["StarPhase"]
     pharmcat["PharmCat"]
   end
@@ -52,12 +64,13 @@ flowchart TD
     slivar_svpack["slivar svpack tsv"]
   end
 
+  trgt_catalog --> bait_fasta --> bait_fail_reads
+  fail_ubam --> bait_fail_reads --> pbmm2_align_fail_reads --> filter_fail_reads --> samtools_merge_fail_reads
   ubam --> pbmm2_align --> samtools_merge
   samtools_merge --> mosdepth
   samtools_merge --> paraphase
   samtools_merge --> mitorsaw
-  samtools_merge --> trgt
-  samtools_merge --> trgt_dropouts
+  samtools_merge_fail_reads --> trgt
   samtools_merge --> deepvariant
   samtools_merge --> sawfish_discover
   samtools_merge --> hiphase
@@ -73,7 +86,9 @@ flowchart TD
   hiphase --> cpg_pileup
   hiphase --> starphase
   hiphase --> pharmcat
+  hiphase --> trgt_dropouts
   starphase --> pharmcat
+  cpg_pileup --> methbat
 
   hiphase --> slivar_small_variants
   hiphase --> svpack
@@ -87,6 +102,7 @@ flowchart TD
 | String | sample_id | Unique identifier for the sample | Alphanumeric characters, periods, dashes, and underscores are allowed. |
 | String? | sex | Sample sex<br/>`["MALE", "FEMALE"]` | Used by HiFiCNV and TRGT for genotyping. Allosome karyotype will default to XX unless sex is specified as `"MALE"`. |
 | Array\[File\] | hifi_reads | Array of paths to HiFi reads in unaligned BAM format. |  |
+| Array\[File\]? | fail_reads | Array of paths to failed HiFi reads in unaligned BAM format (optional) | If provided, these reads will be aligned to the bait-captured regions. |
 | File | [ref_map_file](./ref_map.md) | TSV containing reference genome file paths; must match backend |  |
 | String? | phenotypes | Comma-delimited list of HPO terms. | [Human Phenotype Ontology (HPO) phenotypes](https://hpo.jax.org/app/) associated with the cohort.<br/><br/>If omitted, tertiary analysis will be skipped. |
 | File? | [tertiary_map_file](./tertiary_map.md) | TSV containing tertiary analysis file paths and thresholds; must match backend | `AF`/`AC`/`nhomalt` thresholds can be modified, but this will affect performance.<br/><br/>If omitted, tertiary analysis will be skipped. |
@@ -120,15 +136,18 @@ flowchart TD
 | File | mosdepth_depth_distribution_plot |  |  |
 | File | mapq_distribution_plot | Distribution of mapping quality per alignment | |
 | File | mg_distribution_plot | Distribution of gap-compressed identity score per alignment | |
-| String | stat_num_reads | Number of reads |  |
+| String | stat_read_count | Number of reads |  |
 | String | stat_read_length_mean | Mean read length |  |
 | String | stat_read_length_median | Median read length |  |
+| String | stat_read_length_n50 | Read length N50 |  |
 | String | stat_read_quality_mean | Mean read quality |  |
 | String | stat_read_quality_median | Median read quality |  |
 | String | stat_mapped_read_count | Count of reads mapped to reference |  |
-| String | stat_mapped_percent | Percent of reads mapped to reference |  |
+| String | stat_mapped_read_percent | Percent of reads mapped to reference |  |
+| String | stat_gap_compressed_identity_mean | Mean gap-compressed identity |  |
+| String | stat_gap_compressed_identity_median | Median gap-compressed identity |  |
 | String | inferred_sex | Inferred sex | Sex is inferred based on relative depth of chrY alignments. |
-| String | stat_mean_depth | Mean depth | |
+| String | stat_depth_mean | Mean depth | |
 
 ### Small Variants (<50 bp)
 
@@ -163,6 +182,7 @@ flowchart TD
 | File | sv_depth_bw | CNV depth BigWig |  |
 | File | sv_gc_bias_corrected_depth_bw | CNV GC-bias corrected depth BigWig |  |
 | File | sv_maf_bw | CNV MAF BigWig |  |
+| File | sv_copynum_summary | CNV copy number summary JSON |  |
 | File | bcftools_roh_out | ROH calling |  `bcftools roh` |
 | File | bcftools_roh_bed | Generated from above, without filtering |  |
 
@@ -221,6 +241,10 @@ flowchart TD
 | String | stat_cpg_hap1_count | Hap1 CpG count |  |
 | String | stat_cpg_hap2_count | Hap2 CpG count |  |
 | String | stat_cpg_combined_count | Combined CpG count |  |
+| File? | methbat_profile | MethBat CpG profile |  |
+| String | stat_methbat_methylated_count | Count of profiled regions labeled as methylated |  |
+| String | stat_methbat_unmethylated_count | Count of profiled regions labeled as unmethylated |  |
+| String | stat_methbat_asm_count | Count of profiled regions labeled as having allele specific methylation |  |
 
 ### PGx Typing
 

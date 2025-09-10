@@ -30,6 +30,62 @@
       "description": "",
       "tasks": {}
     },
+    "workflows/process_trgt_catalog/process_trgt_catalog.wdl": {
+      "key": "workflows/process_trgt_catalog/process_trgt_catalog.wdl",
+      "name": "",
+      "description": "",
+      "tasks": {
+        "filter_trgt_catalog": {
+          "key": "filter_trgt_catalog",
+          "digest": "iajobme7e6ssn3vqsng3lmlr4uxi7a6h",
+          "tests": [
+            {
+              "inputs": {
+                "trgt_catalog": "${datasets_file_path}/GRCh38/trgt/adotto_strchive_20250827.hg38.bed.gz",
+                "runtime_attributes": "${default_runtime_attributes}"
+              },
+              "output_tests": {
+                "full_catalog": {
+                  "value": "${resources_file_path}/filter_trgt_catalog/trgt.bed",
+                  "test_tasks": [
+                    "compare_file_basename",
+                    "check_tab_delimited",
+                    "count_bed_columns",
+                    "calculate_md5sum"
+                  ]
+                },
+                "include_fail_reads_bed": {
+                  "value": "${resources_file_path}/filter_trgt_catalog/include_fail_reads.trgt.bed",
+                  "test_tasks": [
+                    "compare_file_basename",
+                    "check_tab_delimited",
+                    "count_bed_columns",
+                    "calculate_md5sum"
+                  ]
+                }
+              }
+            },
+            {
+              "inputs": {
+                "trgt_catalog": "${datasets_file_path}/GRCh38/trgt/adotto_strchive_20250626.hg38.bed.gz",
+                "runtime_attributes": "${default_runtime_attributes}"
+              },
+              "output_tests": {
+                "full_catalog": {
+                  "value": "${resources_file_path}/filter_trgt_catalog/trgt.bed",
+                  "test_tasks": [
+                    "compare_file_basename",
+                    "check_tab_delimited",
+                    "count_bed_columns",
+                    "calculate_md5sum"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
     "workflows/tertiary/tertiary.wdl": {
       "key": "workflows/tertiary/tertiary.wdl",
       "name": "",
@@ -269,7 +325,7 @@
       "tasks": {
         "bam_stats": {
           "key": "bam_stats",
-          "digest": "orfdav6zki7q3pvp6vpikfns2fjdkzrx",
+          "digest": "wy4fhzjozbsr2ub3xl3nldqhzw36xrv4",
           "tests": [
             {
               "inputs": {
@@ -321,7 +377,7 @@
                     "png_validator"
                   ]
                 },
-                "stat_num_reads": {
+                "stat_read_count": {
                   "value": "27398",
                   "test_tasks": [
                     "compare_string"
@@ -335,6 +391,12 @@
                 },
                 "stat_read_length_median": {
                   "value": "14666.5",
+                  "test_tasks": [
+                    "compare_string"
+                  ]
+                },
+                "stat_read_length_n50": {
+                  "value": "16945",
                   "test_tasks": [
                     "compare_string"
                   ]
@@ -357,8 +419,20 @@
                     "compare_string"
                   ]
                 },
-                "stat_mapped_percent": {
+                "stat_mapped_read_percent": {
                   "value": "100.0",
+                  "test_tasks": [
+                    "compare_string"
+                  ]
+                },
+                "stat_gap_compressed_identity_mean": {
+                  "value": "99.77",
+                  "test_tasks": [
+                    "compare_string"
+                  ]
+                },
+                "stat_gap_compressed_identity_median": {
+                  "value": "99.81",
                   "test_tasks": [
                     "compare_string"
                   ]
@@ -376,7 +450,7 @@
       "tasks": {
         "bcftools_stats_roh_small_variants": {
           "key": "bcftools_stats_roh_small_variants",
-          "digest": "a2jlnfpnjbi7gmodm5ooyo2juxbgizzo",
+          "digest": "h7v3tdbxigcxsqk5wnvgdpi4wj2e7fv3",
           "tests": [
             {
               "inputs": {
@@ -889,6 +963,99 @@
         }
       }
     },
+    "workflows/wdl-common/wdl/tasks/methbat.wdl": {
+      "key": "workflows/wdl-common/wdl/tasks/methbat.wdl",
+      "name": "",
+      "description": "",
+      "tasks": {
+        "methbat": {
+          "key": "methbat",
+          "digest": "b6adudztigjntefnrybe7bs2v5njb6vx",
+          "tests": [
+            {
+              "inputs": {
+                "sample_prefix": "HG002.GRCh38.cpg_pileup",
+                "methylation_pileup_beds": [
+                  "${resources_file_path}/cpg_pileup/HG002.GRCh38.cpg_pileup.combined.bed.gz",
+                  "${resources_file_path}/cpg_pileup/HG002.GRCh38.cpg_pileup.hap1.bed.gz",
+                  "${resources_file_path}/cpg_pileup/HG002.GRCh38.cpg_pileup.hap2.bed.gz"
+                ],
+                "region_tsv": "${datasets_file_path}/GRCh38/methbat/cpgIslandExt.sorted.hg38.tsv",
+                "out_prefix": "HG002.GRCh38",
+                "runtime_attributes": "${default_runtime_attributes}"
+              },
+              "output_tests": {
+                "profile": {
+                  "value": "${resources_file_path}/methbat/all_bed_files/HG002.GRCh38.methbat.profile.tsv",
+                  "test_tasks": [
+                    "compare_file_basename",
+                    "check_tab_delimited",
+                    "count_columns"
+                  ]
+                },
+                "stat_methbat_methylated_count": {
+                  "value": "7",
+                  "test_tasks": [
+                    "compare_string"
+                  ]
+                },
+                "stat_methbat_unmethylated_count": {
+                  "value": "57",
+                  "test_tasks": [
+                    "compare_string"
+                  ]
+                },
+                "stat_methbat_asm_count": {
+                  "value": "0",
+                  "test_tasks": [
+                    "compare_string"
+                  ]
+                }
+              }
+            },
+            {
+              "inputs": {
+                "sample_prefix": "HG002.GRCh38.cpg_pileup",
+                "methylation_pileup_beds": [
+                  "${resources_file_path}/cpg_pileup/HG002.GRCh38.cpg_pileup.combined.bed.gz"
+                ],
+                "region_tsv": "${datasets_file_path}/GRCh38/methbat/cpgIslandExt.sorted.hg38.tsv",
+                "out_prefix": "HG002.GRCh38",
+                "runtime_attributes": "${default_runtime_attributes}"
+              },
+              "output_tests": {
+                "profile": {
+                  "value": "${resources_file_path}/methbat/combined_only/HG002.GRCh38.methbat.profile.tsv",
+                  "test_tasks": [
+                    "compare_file_basename",
+                    "check_tab_delimited",
+                    "count_columns"
+                  ]
+                },
+                "stat_methbat_methylated_count": {
+                  "value": "7",
+                  "test_tasks": [
+                    "compare_string"
+                  ]
+                },
+                "stat_methbat_unmethylated_count": {
+                  "value": "57",
+                  "test_tasks": [
+                    "compare_string"
+                  ]
+                },
+                "stat_methbat_asm_count": {
+                  "value": "0",
+                  "test_tasks": [
+                    "compare_string"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
     "workflows/wdl-common/wdl/tasks/glnexus.wdl": {
       "key": "workflows/wdl-common/wdl/tasks/glnexus.wdl",
       "name": "",
@@ -1026,7 +1193,7 @@
       "tasks": {
         "mosdepth": {
           "key": "mosdepth",
-          "digest": "4drmk2f7kwb57hftqv6udfy5fh4eol7d",
+          "digest": "4du2vr6g4guw5rztw3eoeuexvy7ucfqs",
           "tests": [
             {
               "inputs": {
@@ -1064,7 +1231,7 @@
                     "png_validator"
                   ]
                 },
-                "stat_mean_depth": {
+                "stat_depth_mean": {
                   "value": "0.07",
                   "test_tasks": [
                     "compare_string"
@@ -1113,7 +1280,7 @@
                     "png_validator"
                   ]
                 },
-                "stat_mean_depth": {
+                "stat_depth_mean": {
                   "value": "0.07",
                   "test_tasks": [
                     "compare_string"
@@ -1138,7 +1305,7 @@
       "tasks": {
         "mitorsaw": {
           "key": "mitorsaw",
-          "digest": "vzdinv7ullc2eobkrznr47mtjchvzuv4",
+          "digest": "qpi7ncm3hbylrt2ywex4qmjdpfewm3zk",
           "tests": [
             {
               "inputs": {
@@ -1178,7 +1345,7 @@
       "tasks": {
         "paraphase": {
           "key": "paraphase",
-          "digest": "jzs4k5qgxgpjwv54mpw7vlf6nnlu2ki2",
+          "digest": "wnyb2riyyywgia2suckhs4nr7xpsotaq",
           "tests": [
             {
               "inputs": {
@@ -1291,15 +1458,54 @@
             }
           ]
         },
-        "samtools_fasta": {
-          "key": "samtools_fasta",
-          "digest": "",
-          "tests": []
+        "subset_reference": {
+          "key": "subset_reference",
+          "digest": "bp5xzq323jqlo3zobarqetc76iotp3z2",
+          "tests": [
+            {
+              "inputs": {
+                "bed": "${resources_file_path}/filter_trgt_catalog/include_fail_reads.trgt.bed",
+                "ref_fasta": "${ref_fasta}",
+                "ref_index": "${ref_index}",
+                "out_prefix": "include_fail_reads",
+                "runtime_attributes": "${default_runtime_attributes}"
+              },
+              "output_tests": {
+                "fasta": {
+                  "value": "${resources_file_path}/subset_reference/include_fail_reads.fasta",
+                  "test_tasks": [
+                    "compare_file_basename",
+                    "fasta_validator"
+                  ]
+                }
+              }
+            }
+          ]
         },
-        "samtools_reset": {
-          "key": "samtools_reset",
-          "digest": "",
-          "tests": []
+        "subset_bam": {
+          "key": "subset_bam",
+          "digest": "rqdqdzxpguplcszosrprsid75csl3j6f",
+          "tests": [
+            {
+              "inputs": {
+                "bed": "${resources_file_path}/filter_trgt_catalog/include_fail_reads.trgt.bed",
+                "aligned_bam": "${resources_file_path}/subset_bam/HG002.GRCh38.chr13_102100000-102200000.bam",
+                "aligned_bam_index": "${resources_file_path}/subset_bam/HG002.GRCh38.chr13_102100000-102200000.bam.bai",
+                "ref_index": "${ref_index}",
+                "out_prefix": "HG002.GRCh38.baited_fail_reads",
+                "runtime_attributes": "${default_runtime_attributes}"
+              },
+              "output_tests": {
+                "bam": {
+                  "value": "${resources_file_path}/subset_bam/HG002.GRCh38.baited_fail_reads.bam",
+                  "test_tasks": [
+                    "compare_file_basename",
+                    "samtools_quickcheck"
+                  ]
+                }
+              }
+            }
+          ]
         }
       }
     },
@@ -1310,7 +1516,7 @@
       "tasks": {
         "trgt": {
           "key": "trgt",
-          "digest": "knw5lxj7lvuspa7bfxum7zm3n5a5hjgo",
+          "digest": "x2lnix7cnso6qjljqx6ckhbrz3lcpimm",
           "tests": [
             {
               "inputs": {
@@ -1399,7 +1605,7 @@
         },
         "trgt_merge": {
           "key": "trgt_merge",
-          "digest": "jywsabnjsznsx6g6rxf7w5zmwee4fgkn",
+          "digest": "kfoep64umfynj4jfl7gnfmdoejazpspl",
           "tests": [
             {
               "inputs": {
@@ -1433,7 +1639,7 @@
         },
         "coverage_dropouts": {
           "key": "coverage_dropouts",
-          "digest": "rtq5s4pftxqs4d7xkpz3dyyct3a2seyx",
+          "digest": "eyhyifvmfx5g5tcvujinmiu64pb6h4wf",
           "tests": [
             {
               "inputs": {
@@ -1489,23 +1695,25 @@
         },
         "consolidate_stats": {
           "key": "consolidate_stats",
-          "digest": "pot7gxel373bywwte62q3rc7qyb37jgb",
+          "digest": "avi74rrsjpjwfayjzp4zu3jovtgmbgs2",
           "tests": [
             {
               "inputs": {
                 "id": "String",
-                "stats": {
-                  "letters": [
+                "stats": [
+                  [
+                    "letters",
                     "a",
                     "b",
                     "c"
                   ],
-                  "numbers": [
+                  [
+                    "numbers",
                     "1",
                     "2",
                     "3"
                   ]
-                },
+                ],
                 "msg_array": [
                   "hello",
                   "",
@@ -1749,7 +1957,7 @@
       "tasks": {
         "pbmm2_align_wgs": {
           "key": "pbmm2_align_wgs",
-          "digest": "kobmohrwnpy2pzlsd7l2qvoo7ulkxth2",
+          "digest": "b27rhkpyqkpqzxsdn4uctagacoib6z7w",
           "tests": [
             {
               "inputs": {
@@ -1986,28 +2194,28 @@
       "tasks": {
         "sawfish_discover": {
           "key": "sawfish_discover",
-          "digest": "w6ibz5424mjp5xgg3t3cd3gjklbjbsj3",
+          "digest": "6cb4uacwdxuz6dwig7etyc6zclinut62",
           "tests": [
             {
               "inputs": {
-                "sample_id": "HG002-minimal",
+                "sample_id": "HG002",
                 "sex": "MALE",
-                "aligned_bam": "${resources_file_path}/sawfish_discover/inputs/HG002-minimal.m84039_241001_220042_s2.hifi_reads.minimal.GRCh38.aligned.bam",
-                "aligned_bam_index": "${resources_file_path}/sawfish_discover/inputs/HG002-minimal.m84039_241001_220042_s2.hifi_reads.minimal.GRCh38.aligned.bam.bai",
+                "aligned_bam": "${resources_file_path}/sawfish_discover/inputs/v2.1/HG002.chr22.GRCh38.bam",
+                "aligned_bam_index": "${resources_file_path}/sawfish_discover/inputs/v2.1/HG002.chr22.GRCh38.bam.bai",
                 "ref_fasta": "${ref_fasta}",
                 "ref_index": "${ref_index}",
-                "exclude_bed": "${datasets_file_path}/GRCh38/sawfish/annotation_and_common_cnv.hg38.bed.gz",
-                "exclude_bed_index": "${datasets_file_path}/GRCh38/sawfish/annotation_and_common_cnv.hg38.bed.gz.tbi",
+                "exclude_bed": "${resources_file_path}/sawfish_discover/inputs/v2.1/annotation_and_common_cnv.hg38.chr22-only.bed.gz",
+                "exclude_bed_index": "${resources_file_path}/sawfish_discover/inputs/v2.1/annotation_and_common_cnv.hg38.chr22-only.bed.gz.tbi",
                 "expected_male_bed": "${datasets_file_path}/GRCh38/sawfish/expected_cn.hg38.XY.bed",
                 "expected_female_bed": "${datasets_file_path}/GRCh38/sawfish/expected_cn.hg38.XX.bed",
-                "small_variant_vcf": "${resources_file_path}/sawfish_discover/inputs/HG002-minimal.GRCh38.small_variants.vcf.gz",
-                "small_variant_vcf_index": "${resources_file_path}/sawfish_discover/inputs/HG002-minimal.GRCh38.small_variants.vcf.gz.tbi",
-                "out_prefix": "HG002-minimal",
+                "small_variant_vcf": "${resources_file_path}/sawfish_discover/inputs/v2.1/HG002.chr22.GRCh38.small_variants.vcf.gz",
+                "small_variant_vcf_index": "${resources_file_path}/sawfish_discover/inputs/v2.1/HG002.chr22.GRCh38.small_variants.vcf.gz.tbi",
+                "out_prefix": "HG002",
                 "runtime_attributes": "${default_runtime_attributes}"
               },
               "output_tests": {
                 "discover_tar": {
-                  "value": "${resources_file_path}/sawfish_call/input/sawfish-2/HG002-minimal.tar",
+                  "value": "${resources_file_path}/sawfish_discover/output/v2.1/HG002.tar",
                   "test_tasks": [
                     "compare_file_basename"
                   ]
@@ -2018,30 +2226,30 @@
         },
         "sawfish_call": {
           "key": "sawfish_call",
-          "digest": "zm7w4vzg4ncahd3464imevnoihzvkn6q",
+          "digest": "2c3qbrkkjyfqbagqvhkyfzkzs6oh4omg",
           "tests": [
             {
               "inputs": {
                 "sample_ids": [
-                  "HG002-minimal"
+                  "HG002"
                 ],
                 "discover_tars": [
-                  "${resources_file_path}/sawfish_call/input/sawfish-2/HG002-minimal.tar"
+                  "${resources_file_path}/sawfish_discover/output/v2.1/HG002.tar"
                 ],
                 "aligned_bams": [
-                  "${resources_file_path}/sawfish_discover/inputs/HG002-minimal.m84039_241001_220042_s2.hifi_reads.minimal.GRCh38.aligned.bam"
+                  "${resources_file_path}/sawfish_discover/inputs/v2.1/HG002.chr22.GRCh38.bam"
                 ],
                 "aligned_bam_indices": [
-                  "${resources_file_path}/sawfish_discover/inputs/HG002-minimal.m84039_241001_220042_s2.hifi_reads.minimal.GRCh38.aligned.bam.bai"
+                  "${resources_file_path}/sawfish_discover/inputs/v2.1/HG002.chr22.GRCh38.bam.bai"
                 ],
                 "ref_fasta": "${ref_fasta}",
                 "ref_index": "${ref_index}",
-                "out_prefix": "HG002-minimal.GRCh38.structural_variants",
+                "out_prefix": "HG002.GRCh38.structural_variants",
                 "runtime_attributes": "${default_runtime_attributes}"
               },
               "output_tests": {
                 "vcf": {
-                  "value": "${resources_file_path}/sawfish_call/output/HG002-minimal/HG002-minimal.GRCh38.structural_variants.vcf.gz",
+                  "value": "${resources_file_path}/sawfish_call/output/v2.1/HG002/HG002.GRCh38.structural_variants.vcf.gz",
                   "test_tasks": [
                     "compare_file_basename",
                     "check_gzip",
@@ -2049,7 +2257,7 @@
                   ]
                 },
                 "supporting_reads": {
-                  "value": "${resources_file_path}/sawfish_call/output/HG002-minimal/HG002-minimal.GRCh38.structural_variants.supporting_reads.json.gz",
+                  "value": "${resources_file_path}/sawfish_call/output/v2.1/HG002/HG002.GRCh38.structural_variants.supporting_reads.json.gz",
                   "test_tasks": [
                     "compare_file_basename",
                     "check_gzip"
@@ -2057,7 +2265,7 @@
                 },
                 "copynum_bedgraph": {
                   "value": [
-                    "${resources_file_path}/sawfish_call/output/HG002-minimal/HG002-minimal.GRCh38.structural_variants.copynum.bedgraph"
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002/HG002.GRCh38.structural_variants.copynum.bedgraph"
                   ],
                   "test_tasks": [
                     "compare_file_basename",
@@ -2067,7 +2275,7 @@
                 },
                 "depth_bw": {
                   "value": [
-                    "${resources_file_path}/sawfish_call/output/HG002-minimal/HG002-minimal.GRCh38.structural_variants.depth.bw"
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002/HG002.GRCh38.structural_variants.depth.bw"
                   ],
                   "test_tasks": [
                     "compare_file_basename",
@@ -2076,7 +2284,7 @@
                 },
                 "gc_bias_corrected_depth_bw": {
                   "value": [
-                    "${resources_file_path}/sawfish_call/output/HG002-minimal/HG002-minimal.GRCh38.structural_variants.gc_bias_corrected_depth.bw"
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002/HG002.GRCh38.structural_variants.gc_bias_corrected_depth.bw"
                   ],
                   "test_tasks": [
                     "compare_file_basename",
@@ -2085,11 +2293,20 @@
                 },
                 "maf_bw": {
                   "value": [
-                    "${resources_file_path}/sawfish_call/output/HG002-minimal/HG002-minimal.GRCh38.structural_variants.maf.bw"
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002/HG002.GRCh38.structural_variants.maf.bw"
                   ],
                   "test_tasks": [
                     "compare_file_basename",
                     "bigwig_validator"
+                  ]
+                },
+                "copynum_summary": {
+                  "value": [
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002/HG002.GRCh38.structural_variants.copynum.summary.json"
+                  ],
+                  "test_tasks": [
+                    "compare_file_basename",
+                    "check_json"
                   ]
                 }
               }
@@ -2097,33 +2314,33 @@
             {
               "inputs": {
                 "sample_ids": [
-                  "HG002-minimal",
-                  "HG003-minimal",
-                  "HG004-minimal"
+                  "HG002",
+                  "HG003",
+                  "HG004"
                 ],
                 "discover_tars": [
-                  "${resources_file_path}/sawfish_call/input/sawfish-2/HG002-minimal.tar",
-                  "${resources_file_path}/sawfish_call/input/sawfish-2/HG003-minimal.tar",
-                  "${resources_file_path}/sawfish_call/input/sawfish-2/HG004-minimal.tar"
+                  "${resources_file_path}/sawfish_discover/output/v2.1/HG002.tar",
+                  "${resources_file_path}/sawfish_discover/output/v2.1/HG003.tar",
+                  "${resources_file_path}/sawfish_discover/output/v2.1/HG004.tar"
                 ],
                 "aligned_bams": [
-                  "${resources_file_path}/sawfish_call/input/sawfish-2/HG002-minimal.m84039_241001_220042_s2.hifi_reads.minimal.GRCh38.aligned.bam",
-                  "${resources_file_path}/sawfish_call/input/sawfish-2/HG003-minimal.m84039_241002_000337_s3.hifi_reads.minimal.GRCh38.aligned.bam",
-                  "${resources_file_path}/sawfish_call/input/sawfish-2/HG004-minimal.m84039_241002_020632_s4.hifi_reads.minimal.GRCh38.aligned.bam"
+                  "${resources_file_path}/sawfish_discover/inputs/v2.1/HG002.chr22.GRCh38.bam",
+                  "${resources_file_path}/sawfish_discover/inputs/v2.1/HG003.chr22.GRCh38.bam",
+                  "${resources_file_path}/sawfish_discover/inputs/v2.1/HG004.chr22.GRCh38.bam"
                 ],
                 "aligned_bam_indices": [
-                  "${resources_file_path}/sawfish_call/input/sawfish-2/HG002-minimal.m84039_241001_220042_s2.hifi_reads.minimal.GRCh38.aligned.bam.bai",
-                  "${resources_file_path}/sawfish_call/input/sawfish-2/HG003-minimal.m84039_241002_000337_s3.hifi_reads.minimal.GRCh38.aligned.bam.bai",
-                  "${resources_file_path}/sawfish_call/input/sawfish-2/HG004-minimal.m84039_241002_020632_s4.hifi_reads.minimal.GRCh38.aligned.bam.bai"
+                  "${resources_file_path}/sawfish_discover/inputs/v2.1/HG002.chr22.GRCh38.bam.bai",
+                  "${resources_file_path}/sawfish_discover/inputs/v2.1/HG003.chr22.GRCh38.bam.bai",
+                  "${resources_file_path}/sawfish_discover/inputs/v2.1/HG004.chr22.GRCh38.bam.bai"
                 ],
                 "ref_fasta": "${ref_fasta}",
                 "ref_index": "${ref_index}",
-                "out_prefix": "HG002-trio.joint.GRCh38.structural_variants",
+                "out_prefix": "HG002.joint.GRCh38.structural_variants",
                 "runtime_attributes": "${default_runtime_attributes}"
               },
               "output_tests": {
                 "vcf": {
-                  "value": "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG002-trio.joint.GRCh38.structural_variants.vcf.gz",
+                  "value": "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG002.joint.GRCh38.structural_variants.vcf.gz",
                   "test_tasks": [
                     "compare_file_basename",
                     "check_gzip",
@@ -2131,7 +2348,7 @@
                   ]
                 },
                 "supporting_reads": {
-                  "value": "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG002-trio.joint.GRCh38.structural_variants.supporting_reads.json.gz",
+                  "value": "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG002.joint.GRCh38.structural_variants.supporting_reads.json.gz",
                   "test_tasks": [
                     "compare_file_basename",
                     "check_gzip"
@@ -2139,9 +2356,9 @@
                 },
                 "copynum_bedgraph": {
                   "value": [
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG002-minimal.HG002-trio.joint.GRCh38.structural_variants.copynum.bedgraph",
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG003-minimal.HG002-trio.joint.GRCh38.structural_variants.copynum.bedgraph",
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG004-minimal.HG002-trio.joint.GRCh38.structural_variants.copynum.bedgraph"
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG002.HG002.joint.GRCh38.structural_variants.copynum.bedgraph",
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG003.HG002.joint.GRCh38.structural_variants.copynum.bedgraph",
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG004.HG002.joint.GRCh38.structural_variants.copynum.bedgraph"
                   ],
                   "test_tasks": [
                     "compare_file_basename",
@@ -2151,9 +2368,9 @@
                 },
                 "depth_bw": {
                   "value": [
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG002-minimal.HG002-trio.joint.GRCh38.structural_variants.depth.bw",
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG003-minimal.HG002-trio.joint.GRCh38.structural_variants.depth.bw",
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG004-minimal.HG002-trio.joint.GRCh38.structural_variants.depth.bw"
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG002.HG002.joint.GRCh38.structural_variants.depth.bw",
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG003.HG002.joint.GRCh38.structural_variants.depth.bw",
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG004.HG002.joint.GRCh38.structural_variants.depth.bw"
                   ],
                   "test_tasks": [
                     "compare_file_basename",
@@ -2162,9 +2379,9 @@
                 },
                 "gc_bias_corrected_depth_bw": {
                   "value": [
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG002-minimal.HG002-trio.joint.GRCh38.structural_variants.gc_bias_corrected_depth.bw",
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG003-minimal.HG002-trio.joint.GRCh38.structural_variants.gc_bias_corrected_depth.bw",
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG004-minimal.HG002-trio.joint.GRCh38.structural_variants.gc_bias_corrected_depth.bw"
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG002.HG002.joint.GRCh38.structural_variants.gc_bias_corrected_depth.bw",
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG003.HG002.joint.GRCh38.structural_variants.gc_bias_corrected_depth.bw",
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG004.HG002.joint.GRCh38.structural_variants.gc_bias_corrected_depth.bw"
                   ],
                   "test_tasks": [
                     "compare_file_basename",
@@ -2173,13 +2390,24 @@
                 },
                 "maf_bw": {
                   "value": [
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG002-minimal.HG002-trio.joint.GRCh38.structural_variants.maf.bw",
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG003-minimal.HG002-trio.joint.GRCh38.structural_variants.maf.bw",
-                    "${resources_file_path}/sawfish_call/output/HG002-trio-minimal/HG004-minimal.HG002-trio.joint.GRCh38.structural_variants.maf.bw"
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG002.HG002.joint.GRCh38.structural_variants.maf.bw",
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG003.HG002.joint.GRCh38.structural_variants.maf.bw",
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG004.HG002.joint.GRCh38.structural_variants.maf.bw"
                   ],
                   "test_tasks": [
                     "compare_file_basename",
                     "bigwig_validator"
+                  ]
+                },
+                "copynum_summary": {
+                  "value": [
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG002.HG002.joint.GRCh38.structural_variants.copynum.summary.json",
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG003.HG002.joint.GRCh38.structural_variants.copynum.summary.json",
+                    "${resources_file_path}/sawfish_call/output/v2.1/HG002-trio/HG004.HG002.joint.GRCh38.structural_variants.copynum.summary.json"
+                  ],
+                  "test_tasks": [
+                    "compare_file_basename",
+                    "check_json"
                   ]
                 }
               }

@@ -1,6 +1,7 @@
 version 1.1
 import "humanwgs_structs.wdl"
 import "wdl-common/wdl/workflows/backend_configuration/backend_configuration.wdl" as BackendConfiguration
+import "process_trgt_catalog/process_trgt_catalog.wdl" as ProcessTrgtCatalog
 import "upstream/upstream.wdl" as Upstream
 import "joint/joint.wdl" as Joint
 import "downstream/downstream.wdl" as Downstream
@@ -111,6 +112,14 @@ workflow humanwgs_family {
 
   Map [String, String] ref_map = read_map(ref_map_file)
 
+  call ProcessTrgtCatalog.process_trgt_catalog {
+    input:
+      trgt_catalog               = ref_map["trgt_tandem_repeat_bed"],  # !FileCoercion
+      ref_fasta                  = ref_map["fasta"],                   # !FileCoercion
+      ref_index                  = ref_map["fasta_index"],             # !FileCoercion
+      default_runtime_attributes = default_runtime_attributes
+  }
+
   Boolean single_sample = length(family.samples) == 1
 
   Map[String, String] pedigree_sex = {
@@ -132,7 +141,12 @@ workflow humanwgs_family {
         sample_id                     = sample.sample_id,
         sex                           = sample.sex,
         hifi_reads                    = sample.hifi_reads,
+        fail_reads                    = sample.fail_reads,
         ref_map_file                  = ref_map_file,
+        trgt_catalog                  = process_trgt_catalog.full_catalog,
+        fail_reads_bed                = process_trgt_catalog.include_fail_reads_bed,
+        fail_reads_bait_fasta         = process_trgt_catalog.fail_reads_bait_fasta,
+        fail_reads_bait_index         = process_trgt_catalog.fail_reads_bait_index,
         max_reads_per_alignment_chunk = max_reads_per_alignment_chunk,
         single_sample                 = single_sample,
         gpu                           = gpu,
@@ -193,6 +207,7 @@ workflow humanwgs_family {
         sv_vcf_index               = merge_sv_vcfs_align_assembly.merged_vcf_index[sample_index],
         trgt_vcf                   = upstream.trgt_vcf[sample_index],
         trgt_vcf_index             = upstream.trgt_vcf_index[sample_index],
+        trgt_catalog               = process_trgt_catalog.full_catalog,
         aligned_bam                = upstream.out_bam[sample_index],
         aligned_bam_index          = upstream.out_bam_index[sample_index],
         pharmcat_min_coverage      = pharmcat_min_coverage,
@@ -462,41 +477,47 @@ workflow humanwgs_family {
     }
   }
   
-  Map[String, Array[String]] stats = {
-    'sample_id': sample_id,
-    'num_reads': downstream.stat_num_reads,
-    'read_length_mean': downstream.stat_read_length_mean,
-    'read_length_median': downstream.stat_read_length_median,
-    'read_quality_mean': downstream.stat_read_quality_mean,
-    'read_quality_median': downstream.stat_read_quality_median,
-    'mapped_read_count': downstream.stat_mapped_read_count,
-    'mapped_percent': downstream.stat_mapped_percent,
-    'mean_depth': upstream.stat_mean_depth,
-    'inferred_sex': upstream.inferred_sex,
-    'stat_phased_basepairs': downstream.stat_phased_basepairs,
-    'phase_block_ng50': downstream.stat_phase_block_ng50,
-    'cpg_combined_count': downstream.stat_combined_cpg_count,
-    'cpg_hap1_count': downstream.stat_hap1_cpg_count,
-    'cpg_hap2_count': downstream.stat_hap2_cpg_count,
-    'SNV_count': downstream.stat_SNV_count,
-    'TSTV_ratio': downstream.stat_TSTV_ratio,
-    'HETHOM_ratio': downstream.stat_HETHOM_ratio,
-    'INDEL_count': downstream.stat_INDEL_count,
-    'sv_DUP_count': downstream.stat_sv_DUP_count,
-    'sv_DEL_count': downstream.stat_sv_DEL_count,
-    'sv_INS_count': downstream.stat_sv_INS_count,
-    'sv_INV_count': downstream.stat_sv_INV_count,
-    'sv_SWAP_count': downstream.stat_sv_SWAP_count,
-    'sv_BND_count': downstream.stat_sv_BND_count,
-    'trgt_genotyped_count': upstream.stat_trgt_genotyped_count,
-    'trgt_uncalled_count': upstream.stat_trgt_uncalled_count
-  }
+    Array[Array[String]] stats = [
+      flatten([['sample_id'], sample_id]),
+      flatten([['read_count'], downstream.stat_read_count]),
+      flatten([['read_length_mean'], downstream.stat_read_length_mean]),
+      flatten([['read_length_median'], downstream.stat_read_length_median]),
+      flatten([['read_length_n50'], downstream.stat_read_length_n50]),
+      flatten([['read_quality_mean'], downstream.stat_read_quality_mean]),
+      flatten([['read_quality_median'], downstream.stat_read_quality_median]),
+      flatten([['mapped_read_count'], downstream.stat_mapped_read_count]),
+      flatten([['mapped_read_percent'], downstream.stat_mapped_read_percent]),
+      flatten([['gap_compressed_identity_mean'], downstream.stat_gap_compressed_identity_mean]),
+      flatten([['gap_compressed_identity_median'], downstream.stat_gap_compressed_identity_median]),
+      flatten([['depth_mean'], upstream.stat_depth_mean]),
+      flatten([['inferred_sex'], upstream.inferred_sex]),
+      flatten([['stat_phased_basepairs'], downstream.stat_phased_basepairs]),
+      flatten([['phase_block_ng50'], downstream.stat_phase_block_ng50]),
+      flatten([['cpg_combined_count'], downstream.stat_combined_cpg_count]),
+      flatten([['cpg_hap1_count'], downstream.stat_hap1_cpg_count]),
+      flatten([['cpg_hap2_count'], downstream.stat_hap2_cpg_count]),
+      flatten([['methbat_methylated_count'], downstream.stat_methbat_methylated_count]),
+      flatten([['methbat_unmethylated_count'], downstream.stat_methbat_unmethylated_count]),
+      flatten([['methbat_asm_count'], downstream.stat_methbat_asm_count]),
+      flatten([['SNV_count'], downstream.stat_SNV_count]),
+      flatten([['TSTV_ratio'], downstream.stat_TSTV_ratio]),
+      flatten([['HETHOM_ratio'], downstream.stat_HETHOM_ratio]),
+      flatten([['INDEL_count'], downstream.stat_INDEL_count]),
+      flatten([['sv_DUP_count'], downstream.stat_sv_DUP_count]),
+      flatten([['sv_DEL_count'], downstream.stat_sv_DEL_count]),
+      flatten([['sv_INS_count'], downstream.stat_sv_INS_count]),
+      flatten([['sv_INV_count'], downstream.stat_sv_INV_count]),
+      flatten([['sv_SWAP_count'], downstream.stat_sv_SWAP_count]),
+      flatten([['sv_BND_count'], downstream.stat_sv_BND_count]),
+      flatten([['trgt_genotyped_count'], upstream.stat_trgt_genotyped_count]),
+      flatten([['trgt_uncalled_count'], upstream.stat_trgt_uncalled_count])
+  ]
 
   call Utilities.consolidate_stats {
     input:
       id                 = family.family_id,
       stats              = stats,
-      msg_array          = flatten([flatten(upstream.msg)]),
+      msg_array          = flatten([process_trgt_catalog.msg, flatten(upstream.msg)]),
       runtime_attributes = default_runtime_attributes
   }
   
@@ -508,18 +529,21 @@ workflow humanwgs_family {
 
     ## WT OUTPUTS
     # bam stats
-    Array[File]   bam_statistics           = downstream.bam_statistics
-    Array[File]   read_length_plot         = downstream.read_length_plot
-    Array[File?]  read_quality_plot        = downstream.read_quality_plot
-    Array[File]   mapq_distribution_plot   = downstream.mapq_distribution_plot
-    Array[File]   mg_distribution_plot     = downstream.mg_distribution_plot
-    Array[String] stat_num_reads           = downstream.stat_num_reads
-    Array[String] stat_read_length_mean    = downstream.stat_read_length_mean
-    Array[String] stat_read_length_median  = downstream.stat_read_length_median
-    Array[String] stat_read_quality_mean   = downstream.stat_read_quality_mean
-    Array[String] stat_read_quality_median = downstream.stat_read_quality_median
-    Array[String] stat_mapped_read_count   = downstream.stat_mapped_read_count
-    Array[String] stat_mapped_percent      = downstream.stat_mapped_percent
+    Array[File]   bam_statistics                      = downstream.bam_statistics
+    Array[File]   read_length_plot                    = downstream.read_length_plot
+    Array[File?]  read_quality_plot                   = downstream.read_quality_plot
+    Array[File]   mapq_distribution_plot              = downstream.mapq_distribution_plot
+    Array[File]   mg_distribution_plot                = downstream.mg_distribution_plot
+    Array[String] stat_read_count                     = downstream.stat_read_count
+    Array[String] stat_read_length_mean               = downstream.stat_read_length_mean
+    Array[String] stat_read_length_median             = downstream.stat_read_length_median
+    Array[String] stat_read_length_n50                = downstream.stat_read_length_n50
+    Array[String] stat_read_quality_mean              = downstream.stat_read_quality_mean
+    Array[String] stat_read_quality_median            = downstream.stat_read_quality_median
+    Array[String] stat_mapped_read_count              = downstream.stat_mapped_read_count
+    Array[String] stat_mapped_read_percent            = downstream.stat_mapped_read_percent
+    Array[String] stat_gap_compressed_identity_mean   = downstream.stat_gap_compressed_identity_mean
+    Array[String] stat_gap_compressed_identity_median = downstream.stat_gap_compressed_identity_median
 
     # merged, haplotagged alignments
     Array[File]   merged_haplotagged_bam       = downstream.merged_haplotagged_bam
@@ -530,7 +554,7 @@ workflow humanwgs_family {
     Array[File]   mosdepth_region_bed              = upstream.mosdepth_region_bed
     Array[File]   mosdepth_region_bed_index        = upstream.mosdepth_region_bed_index
     Array[File]   mosdepth_depth_distribution_plot = upstream.mosdepth_depth_distribution_plot
-    Array[String] stat_mean_depth                  = upstream.stat_mean_depth
+    Array[String] stat_depth_mean                  = upstream.stat_depth_mean
     Array[String] inferred_sex                     = upstream.inferred_sex
 
     # mosdepth hg002 outputs
@@ -548,19 +572,23 @@ workflow humanwgs_family {
     Array[String] stat_phased_basepairs = downstream.stat_phased_basepairs
     Array[String] stat_phase_block_ng50 = downstream.stat_phase_block_ng50
 
-    # cpg_pileup outputs
-    Array[File?]  cpg_combined_bed        = downstream.cpg_combined_bed
-    Array[File?]  cpg_combined_bed_index  = downstream.cpg_combined_bed_index
-    Array[File?]  cpg_hap1_bed            = downstream.cpg_hap1_bed
-    Array[File?]  cpg_hap1_bed_index      = downstream.cpg_hap1_bed_index
-    Array[File?]  cpg_hap2_bed            = downstream.cpg_hap2_bed
-    Array[File?]  cpg_hap2_bed_index      = downstream.cpg_hap2_bed_index
-    Array[File?]  cpg_combined_bw         = downstream.cpg_combined_bw
-    Array[File?]  cpg_hap1_bw             = downstream.cpg_hap1_bw
-    Array[File?]  cpg_hap2_bw             = downstream.cpg_hap2_bw
-    Array[String] stat_cpg_hap1_count     = downstream.stat_hap1_cpg_count
-    Array[String] stat_cpg_hap2_count     = downstream.stat_hap2_cpg_count
-    Array[String] stat_cpg_combined_count = downstream.stat_combined_cpg_count
+    # methylation outputs and profile
+    Array[File?]  cpg_combined_bed                 = downstream.cpg_combined_bed
+    Array[File?]  cpg_combined_bed_index           = downstream.cpg_combined_bed_index
+    Array[File?]  cpg_hap1_bed                     = downstream.cpg_hap1_bed
+    Array[File?]  cpg_hap1_bed_index               = downstream.cpg_hap1_bed_index
+    Array[File?]  cpg_hap2_bed                     = downstream.cpg_hap2_bed
+    Array[File?]  cpg_hap2_bed_index               = downstream.cpg_hap2_bed_index
+    Array[File?]  cpg_combined_bw                  = downstream.cpg_combined_bw
+    Array[File?]  cpg_hap1_bw                      = downstream.cpg_hap1_bw
+    Array[File?]  cpg_hap2_bw                      = downstream.cpg_hap2_bw
+    Array[String] stat_cpg_hap1_count              = downstream.stat_hap1_cpg_count
+    Array[String] stat_cpg_hap2_count              = downstream.stat_hap2_cpg_count
+    Array[String] stat_cpg_combined_count          = downstream.stat_combined_cpg_count
+    Array[File?]  methbat_profile                  = downstream.methbat_profile
+    Array[String] stat_methbat_methylated_count   = downstream.stat_methbat_methylated_count
+    Array[String] stat_methbat_unmethylated_count = downstream.stat_methbat_unmethylated_count
+    Array[String] stat_methbat_asm_count          = downstream.stat_methbat_asm_count
 
     # sv outputs
     Array[File] phased_sv_vcf                 = downstream.phased_sv_vcf
@@ -570,6 +598,7 @@ workflow humanwgs_family {
     Array[File] sv_depth_bw                   = select_first([joint.sv_depth_bw, select_all(upstream.sv_depth_bw)])
     Array[File] sv_gc_bias_corrected_depth_bw = select_first([joint.sv_gc_bias_corrected_depth_bw, select_all(upstream.sv_gc_bias_corrected_depth_bw)])
     Array[File] sv_maf_bw                     = select_first([joint.sv_maf_bw, select_all(upstream.sv_maf_bw)])
+    Array[File] sv_copynum_summary            = select_first([joint.sv_copynum_summary, select_all(upstream.sv_copynum_summary)])
 
     # sv stats
     Array[String] stat_sv_DUP_count  = downstream.stat_sv_DUP_count
@@ -710,12 +739,13 @@ workflow humanwgs_family {
     # qc messages
     Array[String] msg = flatten(
       [
+        process_trgt_catalog.msg,
         flatten(upstream.msg)
       ]
     )
 
     # workflow metadata
     String workflow_name    = "humanwgs_family"
-    String workflow_version = "v3.0.2" + if defined(debug_version) then "~{"-" + debug_version}" else ""
+    String workflow_version = "v3.1.0" + if defined(debug_version) then "~{"-" + debug_version}" else ""
   }
 }

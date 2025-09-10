@@ -1,8 +1,0 @@
-trf_bed	hifisomatic_resources/human_GRCh38_no_alt_analysis_set.trf.bed
-ref_bed	hifisomatic_resources/chr.bed
-ref_gff	hifisomatic_resources/Homo_sapiens.GRCh38.112.chr.reformatted.gff3
-control_vcf	hifisomatic_resources/severus.jasmine.AN10.AC4.nosample.vcf.gz
-control_vcf_index	hifisomatic_resources/severus.jasmine.AN10.AC4.nosample.vcf.gz.tbi
-severus_pon_tsv	PoN_1000G_hg38_extended.tsv.gz
-vep_cache	homo_sapiens_refseq_vep_112_GRCh38.tar.gz
-annotsv_cache	annotsv_cache.tar.gz
