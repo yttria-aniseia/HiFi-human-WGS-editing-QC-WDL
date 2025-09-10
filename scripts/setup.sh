@@ -67,8 +67,3 @@ if [[ $FETCH_EXTRA -eq 1 ]]; then
 	wget https://ftp.ensembl.org/pub/release-112/variation/indexed_vep_cache/homo_sapiens_refseq_vep_112_GRCh38.tar.gz
 	echo "Reference Tarball Sucessfully downloaded"
 fi
-
-
-#prepull images
-bash scripts/create_image_manifest.sh
-bash scripts/pre-pull.sh

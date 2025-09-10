@@ -58,6 +58,11 @@ CACHE_DIR="${3:-}"
 TMP_DIR="${4:-}"
 MINIWDL_CFG="${5:-}"
 
+#prepull images
+bash scripts/create_image_manifest.sh
+bash scripts/populate_miniwdl_singularity_cache.sh image_manifest.txt $CACHE_DIR/singularity_cache
+
+
 # Handle work directory path
 if [[ "$WORK_DIR_NAME" == *"/"* ]]; then
     # Contains path separators, use as full path
