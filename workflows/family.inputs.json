@@ -11,7 +11,8 @@
         "affected": "Boolean",
         "sex": "String? (optional); ['MALE', 'FEMALE']",
         "father_id": "String? (optional)",
-        "mother_id": "String? (optional)"
+        "mother_id": "String? (optional)",
+        "expected_edit": "File? (optional)"
       }
     ]
   },

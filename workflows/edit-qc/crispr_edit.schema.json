@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "",
+  "title": "WGS QC CRISPR Edit",
+  "description": "",
+  "type": "object",
+  "properties": {
+    "ref": {
+      "enum": ["hg38"],
+      "description": "reference assembly target coordinates are valid in"
+    },
+    "edits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "target": {
+            "type": "object",
+            "properties": {
+              "chr": {
+                "type": "string",
+                "description": "chromosome sequence name"
+              },
+              "start": {
+                "type": "number",
+                "minimum": 1,
+                "description": "start offset, 1-based"
+              },
+              "end": {
+                "type": "number",
+                "description": "end offset, 1-based"
+              },
+              "symbol": {
+                "type": "string",
+                "description": "overlapping gene symbol"
+              }
+            },
+            "required": [
+              "chr",
+              "start",
+              "end"
+            ]
+          },
+          "edit": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": ["SNV", "INS", "DEL"],
+                "description": "expected edit type: SNV for single-base mutation.  INS for large insertions, DEL for large deletions"
+              },
+              "strand": {
+                "enum": ["+", "-"]
+              },
+              "guide": {
+                "type": "string",
+                "description": "gRNA sequence"
+              },
+              "left_ha": {
+                "type": "string",
+                "description": "left homology arm sequence"
+              },
+              "payload": {
+                "type": "string",
+                "description": "payload sequence"
+              },
+              "right_ha": {
+                "type": "string",
+                "description": "right homology arm sequence"
+              }
+            },
+            "required": [
+              "type",
+              "strand",
+              "guide",
+              "left_ha",
+              "payload",
+              "right_ha"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "target",
+          "edit"
+        ]
+      }
+    }
+  },
+  "required": [
+    "ref",
+    "edits"
+  ]
+}
