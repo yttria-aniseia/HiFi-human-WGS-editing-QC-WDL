@@ -12,6 +12,7 @@ import "wdl-common/wdl/tasks/utilities.wdl" as Utilities
 import "edit-qc/bcftools_aux.wdl" as Bcftools_aux
 import "edit-qc/bcftools_norm.wdl" as Bcftools_norm
 import "edit-qc/truvari_parent_filter.wdl" as TruvariParentFilter
+import "edit-qc/crispr_edit_qc.wdl" as CrisprEditQC
 import "somatic_ports/somatic_annotation.wdl" as Somatic_annotation
 import "somatic_ports/somatic_calling.wdl" as Somatic_calling
 
@@ -163,6 +164,17 @@ workflow humanwgs_family {
       pedigree_sex[upstream.inferred_sex],
       if sample.affected then "2" else "1"
     ]
+
+    # CRISPR edit QC workflow - runs only if expected_edit is provided
+    if (defined(sample.expected_edit)) {
+      call CrisprEditQC.crispr_edit_qc {
+        input:
+          sample_id = sample.sample_id,
+          fasta_reads = upstream.fasta_output,
+          crispr_edit_json = select_first([sample.expected_edit]),
+          runtime_attributes = default_runtime_attributes
+      }
+    }
   }
 
     ####################################
@@ -735,6 +747,11 @@ workflow humanwgs_family {
     File? tertiary_sv_filtered_vcf                      = tertiary_analysis.sv_filtered_vcf
     File? tertiary_sv_filtered_vcf_index                = tertiary_analysis.sv_filtered_vcf_index
     File? tertiary_sv_filtered_tsv                      = tertiary_analysis.sv_filtered_tsv
+
+    # CRISPR edit QC outputs
+    Array[File?] edit_qc_filtered_reads_fasta   = crispr_edit_qc.filtered_reads_fasta
+    Array[File?] edit_qc_parts_alignment_paf    = crispr_edit_qc.parts_alignment_paf
+    Array[File?] edit_qc_wide_faithful_tsv      = crispr_edit_qc.wide_faithful_table
 
     # qc messages
     Array[String] msg = flatten(
