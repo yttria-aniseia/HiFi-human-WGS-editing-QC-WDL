@@ -20,20 +20,20 @@ workflow assembly {
   }
 
   input {
-    File hifi_read_bam
+    Array[File] hifi_read_bams
 
     String sample_id
 
     Map[String, String] ref_map
 
-    RuntimeAttributes default_runtime_attributes
+    String pav_sif_path = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/miniwdl_cache/singularity_cache/pav_latest.sif"
 
+    RuntimeAttributes default_runtime_attributes
   }
-  String pav_sif_path = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/miniwdl_cache/singularity_cache/pav_latest.sif"
 
   call assembly_tasks.samtools_bam_to_fasta as bam_to_fasta {
     input:
-      input_bam          = hifi_read_bam,
+      input_bams         = hifi_read_bams,
       threads            = 32,
       runtime_attributes = default_runtime_attributes
   }

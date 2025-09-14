@@ -3,22 +3,27 @@ version 1.1
 import "../wdl-common/wdl/structs.wdl"
 task samtools_bam_to_fasta {
     input {
-        File input_bam
+        Array[File] input_bams
         Int threads
         RuntimeAttributes runtime_attributes
     }
 
     Int mem_gb    = ceil(threads * 4)
-    Int disk_size = ceil(size(input_bam, "GB") * 3 + 70)
+    Int disk_size = ceil(size(input_bams, "GB") * 3 + 70)
     command <<<
         set -euxo pipefail
-        samtools index -@ ~{threads} ~{input_bam}
-        name=$(basename "~{input_bam}" .bam)
-        samtools fasta -@ ~{threads} ~{input_bam} > ${name}.fasta
+        samtools --version
+
+        name=$(basename "~{input_bams[0]}" .bam)
+        for bam in ~{sep=' ' input_bams}; do
+          samtools index -@ ~{threads} "${bam}"
+          samtools fasta -@ ~{threads} "${bam}" >> ${name}.fa
+        done
+        bgzip ${name}.fa
     >>>
 
     output {
-        File input_fasta = sub(basename(input_bam), "\\.bam$","") + ".fasta"
+        File input_fasta = sub(basename(input_bams[0]), "\\.bam$","") + ".fa.gz"
     }
     runtime {
     docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"

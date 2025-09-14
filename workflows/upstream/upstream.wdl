@@ -293,20 +293,11 @@ workflow upstream {
     File maf_bw_output                     = sawfish_call.maf_bw[0]
     File copynum_summary_output            = sawfish_call.copynum_summary[0]
   }
-  if (length(hifi_reads) > 1) {
-    call Samtools_aux.samtools_cat as samtools_cat {
-      input:
-        bams               = hifi_reads,
-        out_prefix         = "~{sample_id}.~{ref_map['name']}",
-        runtime_attributes = default_runtime_attributes
-    }
-  }
-  File assembly_input_bam = select_first([samtools_cat.merged_bam, hifi_reads[0]])
   call Assembly.assembly {
       input:
-        hifi_read_bam   = assembly_input_bam,
-        sample_id   = "~{sample_id}",
-        ref_map     = ref_map,
+        hifi_read_bams     = hifi_reads,
+        sample_id          = "~{sample_id}",
+        ref_map            = ref_map,
         default_runtime_attributes = default_runtime_attributes
   }
 
@@ -370,10 +361,6 @@ workflow upstream {
     File? paraphase_vcfs                = paraphase.vcfs_tar
 
     # assembly outputs
-    #catted bam
-    File? cat_bam = samtools_cat.merged_bam
-    File? cat_bam_index = samtools_cat.merged_bam_index
-
     #bam to fasta outputs
     File fasta_output = assembly.fasta_output
 
