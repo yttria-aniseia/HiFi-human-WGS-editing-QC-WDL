@@ -23,7 +23,7 @@ workflow crispr_edit_qc {
     File crispr_edit_json
     Float min_identity = 0.80
     Float coverage_threshold = 0.8
-    Int threads = 4
+    Int threads = 8
     RuntimeAttributes runtime_attributes
   }
 
