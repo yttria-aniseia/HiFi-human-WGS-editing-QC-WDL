@@ -165,6 +165,7 @@ import os
 import shutil
 import sys
 import filecmp
+import subprocess
 from pathlib import Path
 
 def should_copy_file(src_path, dest_path):
@@ -172,7 +173,8 @@ def should_copy_file(src_path, dest_path):
     if not dest_path.exists():
         return True
 
-    return not filecmp.cmp(src_path, dest_path, shallow=True)
+    return False
+    #return not filecmp.cmp(src_path, dest_path, shallow=True)
 
 if len(sys.argv) != 2:
     print("Usage: python3 process_config.py <input_config_json>")
@@ -198,18 +200,28 @@ if "humanwgs_family.family" in config:
         new_sample = sample.copy()
         new_hifi_reads = []
         
-        # Copy HiFi reads files
+        # Copy HiFi reads files using samtools to strip tags
         for i, hifi_read_path in enumerate(sample["hifi_reads"]):
             if os.path.exists(hifi_read_path):
                 filename = f"{sample['sample_id']}_hifi_reads_{i}.bam"
                 dest_path = inputs_dir / filename
-                
+
                 if should_copy_file(hifi_read_path, dest_path):
-                    print(f"Copying {hifi_read_path} -> {dest_path}")
-                    shutil.copy2(hifi_read_path, dest_path)
+                    print(f"Copying {hifi_read_path} -> {dest_path} (stripping tags: fi,ri,fp,rp,ip,pw,ls)")
+                    subprocess.run([
+                    		"samtools", "reset", "-@", "8",
+                    		"--keep-tag", "RG", "--keep-tag", "ls", "--keep-tag", "ql",
+                    		"--keep-tag", "qt", "--keep-tag", "qe", "--keep-tag", "bc",
+                    		"--keep-tag", "cx", "--keep-tag", "bt", "--keep-tag", "zm",
+                    		"--keep-tag", "ws", "--keep-tag", "we", "--keep-tag", "sn",
+                    		"--keep-tag", "rq", "--keep-tag", "ML", "--keep-tag", "MM",
+                    		"--keep-tag", "ac", "--keep-tag", "bx", "--keep-tag", "ec",
+                    		"--keep-tag", "ma", "--keep-tag", "np",
+                        hifi_read_path, "-o", str(dest_path)
+                    ], check=True)
                 else:
                     print(f"Skipping {hifi_read_path} -> {dest_path} (already exists and identical)")
-                
+
                 new_hifi_reads.append(str(dest_path.absolute()))
             else:
                 print(f"Warning: HiFi reads file not found: {hifi_read_path}")

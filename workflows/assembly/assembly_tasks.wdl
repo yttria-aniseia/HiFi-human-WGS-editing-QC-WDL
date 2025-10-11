@@ -19,7 +19,7 @@ task samtools_bam_to_fasta {
           samtools index -@ ~{threads} "${bam}"
           samtools fasta -@ ~{threads} "${bam}" >> ${name}.fa
         done
-        bgzip ${name}.fa
+        bgzip -@ ~{threads} ${name}.fa
     >>>
 
     output {
@@ -46,13 +46,18 @@ task hifiasm_assembly {
         Int threads
         RuntimeAttributes runtime_attributes
     }
-    Int mem_gb    = ceil(threads * 8)
+
+    Int mem_gb    = ceil(54 + 5*max(0, size(input_fasta, "GB") - 10))
     Int disk_size = ceil(size(input_fasta, "GB") * 3 + 70)
 
     command <<<
         set -euxo pipefail
+        hifiasm --version
         name=$(basename "~{input_fasta}" .fasta)
-        hifiasm -o ${name}.asm -t ~{threads} ~{input_fasta}
+        WDIR="${PWD}"
+        cd "${TMPDIR:-/tmp}"
+        hifiasm -o "${WDIR}/${name}.asm" -t ~{threads} ~{input_fasta}
+        cd "${WDIR}"
     >>>
 
     output {
@@ -62,7 +67,7 @@ task hifiasm_assembly {
     runtime {
     docker: "quay.io/biocontainers/hifiasm@sha256:5dc4c88cabceb56445f44e785dae252e13fb8131e9bde54028bfb4102a3f424d"
     cpu: threads
-    memory: mem_gb + " GB"
+    memory: mem_gb + " GiB"
     disk: disk_size + " GB"
     disks: "local-disk " + disk_size + " HDD"
     preemptible: runtime_attributes.preemptible_tries
