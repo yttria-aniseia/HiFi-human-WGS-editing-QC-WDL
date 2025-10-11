@@ -369,11 +369,11 @@ workflow upstream {
     File asm_2 = assembly.asm_2
 
     # quast report output
-    File quast_transposed_report = assembly.transposed_report
-    File quast_icarus_html = assembly.icarus_html
-    File quast_report_html = assembly.report_html
-    File quast_report_pdf = assembly.report_pdf
-    File quast_report_txt = assembly.report_txt
+    # File quast_transposed_report = assembly.transposed_report
+    # File quast_icarus_html = assembly.icarus_html
+    # File quast_report_html = assembly.report_html
+    # File quast_report_pdf = assembly.report_pdf
+    # File quast_report_txt = assembly.report_txt
 
     # pav outputs
     File? pav_vcf = assembly.pav_vcf
