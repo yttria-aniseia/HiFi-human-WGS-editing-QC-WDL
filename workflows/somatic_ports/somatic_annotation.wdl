@@ -320,10 +320,18 @@ task prioritize_small_variants {
           }
         ' \
       >> "~{fname_ranked}"
-    # 5) filter HIGH or MODERATE into the final file
-    awk -F $'\t' -v OFS=$'\t' -v impact="$impactcol" '
+    # 5) find MAX_AF column index (1‐based)
+    IFS=$'\t' read -r -a hdr2 < <(head -n1 "~{fname_ranked}")
+    maxafcol=0
+    for i in "${!hdr2[@]}"; do
+      [[ "${hdr2[i]}" == "MAX_AF" ]] && { maxafcol=$((i+1)); break; }
+    done
+    [[ $maxafcol -gt 0 ]] || { echo "ERROR: MAX_AF column not found" >&2; exit 1; }
+
+    # 6) filter HIGH or MODERATE impact and MAX_AF < 0.001 (Cite: 10.1038/s41525-021-00227-3)
+    awk -F $'\t' -v OFS=$'\t' -v impact="$impactcol" -v maxaf="$maxafcol" '
       NR==1 { print; next }
-      ($impact=="HIGH" || $impact=="MODERATE")
+      ($impact=="HIGH" || $impact=="MODERATE") && ($maxaf == "" || $maxaf < 0.001)
     ' "~{fname_ranked}" > "~{fname_filtered}"
     >>>
 

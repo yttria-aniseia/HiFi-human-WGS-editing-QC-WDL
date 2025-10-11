@@ -20,20 +20,20 @@ workflow assembly {
   }
 
   input {
-    File hifi_read_bam
+    Array[File] hifi_read_bams
 
     String sample_id
 
     Map[String, String] ref_map
 
-    RuntimeAttributes default_runtime_attributes
+    String pav_sif_path = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/miniwdl_cache/singularity_cache/pav_latest.sif"
 
+    RuntimeAttributes default_runtime_attributes
   }
-  String pav_sif_path = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/miniwdl_cache/singularity_cache/pav_latest.sif"
 
   call assembly_tasks.samtools_bam_to_fasta as bam_to_fasta {
     input:
-      input_bam          = hifi_read_bam,
+      input_bams         = hifi_read_bams,
       threads            = 32,
       runtime_attributes = default_runtime_attributes
   }
@@ -49,14 +49,14 @@ workflow assembly {
       input_hap2_gfa     = hifiasm_assembly.input_2_asm,
       runtime_attributes = default_runtime_attributes
   }
-  call assembly_tasks.quast as quast {
-    input:
-      input_fa_1 = gfa_to_fa.fasta_hap1,
-      input_fa_2 = gfa_to_fa.fasta_hap2,
-      input_fa = bam_to_fasta.input_fasta,
-      ref = ref_map["hg002_fasta"],
-      runtime_attributes = default_runtime_attributes
-  }
+  # call assembly_tasks.quast as quast {
+  #   input:
+  #     input_fa_1 = gfa_to_fa.fasta_hap1,
+  #     input_fa_2 = gfa_to_fa.fasta_hap2,
+  #     input_fa = bam_to_fasta.input_fasta,
+  #     ref = ref_map["hg002_fasta"],
+  #     runtime_attributes = default_runtime_attributes
+  # }
   call assembly_tasks.pav as pav {
     input:
       ref            = ref_map["hg002_fasta"],
@@ -90,11 +90,11 @@ workflow assembly {
     # hifiasm assembly outputs
     File asm_1 = hifiasm_assembly.input_1_asm
     File asm_2 = hifiasm_assembly.input_2_asm
-    File transposed_report = quast.transposed_report
-    File icarus_html       = quast.icarus_html
-    File report_html       = quast.report_html
-    File report_pdf        = quast.report_pdf
-    File report_txt        = quast.report_txt
+    # File transposed_report = quast.transposed_report
+    # File icarus_html       = quast.icarus_html
+    # File report_html       = quast.report_html
+    # File report_pdf        = quast.report_pdf
+    # File report_txt        = quast.report_txt
 
     # pav outputs
     File? pav_vcf = pav.pav_vcf

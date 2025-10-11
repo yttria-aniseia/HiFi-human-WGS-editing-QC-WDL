@@ -2,6 +2,9 @@ inputs.test_data*.json
 .wdltest*
 
 *.zip
+*.tar
+*.bam
+*.bak
 
 Makefile
 .env

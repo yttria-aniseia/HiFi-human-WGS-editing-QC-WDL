@@ -3,22 +3,27 @@ version 1.1
 import "../wdl-common/wdl/structs.wdl"
 task samtools_bam_to_fasta {
     input {
-        File input_bam
+        Array[File] input_bams
         Int threads
         RuntimeAttributes runtime_attributes
     }
 
     Int mem_gb    = ceil(threads * 4)
-    Int disk_size = ceil(size(input_bam, "GB") * 3 + 70)
+    Int disk_size = ceil(size(input_bams, "GB") * 3 + 70)
     command <<<
         set -euxo pipefail
-        samtools index -@ ~{threads} ~{input_bam}
-        name=$(basename "~{input_bam}" .bam)
-        samtools fasta -@ ~{threads} ~{input_bam} > ${name}.fasta
+        samtools --version
+
+        name=$(basename "~{input_bams[0]}" .bam)
+        for bam in ~{sep=' ' input_bams}; do
+          samtools index -@ ~{threads} "${bam}"
+          samtools fasta -@ ~{threads} "${bam}" >> ${name}.fa
+        done
+        bgzip -@ ~{threads} ${name}.fa
     >>>
 
     output {
-        File input_fasta = sub(basename(input_bam), "\\.bam$","") + ".fasta"
+        File input_fasta = sub(basename(input_bams[0]), "\\.bam$","") + ".fa.gz"
     }
     runtime {
     docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
@@ -41,13 +46,18 @@ task hifiasm_assembly {
         Int threads
         RuntimeAttributes runtime_attributes
     }
-    Int mem_gb    = ceil(threads * 8)
+
+    Int mem_gb    = ceil(54 + 5*max(0, size(input_fasta, "GB") - 10))
     Int disk_size = ceil(size(input_fasta, "GB") * 3 + 70)
 
     command <<<
         set -euxo pipefail
+        hifiasm --version
         name=$(basename "~{input_fasta}" .fasta)
-        hifiasm -o ${name}.asm -t ~{threads} ~{input_fasta}
+        WDIR="${PWD}"
+        cd "${TMPDIR:-/tmp}"
+        hifiasm -o "${WDIR}/${name}.asm" -t ~{threads} ~{input_fasta}
+        cd "${WDIR}"
     >>>
 
     output {
@@ -57,7 +67,7 @@ task hifiasm_assembly {
     runtime {
     docker: "quay.io/biocontainers/hifiasm@sha256:5dc4c88cabceb56445f44e785dae252e13fb8131e9bde54028bfb4102a3f424d"
     cpu: threads
-    memory: mem_gb + " GB"
+    memory: mem_gb + " GiB"
     disk: disk_size + " GB"
     disks: "local-disk " + disk_size + " HDD"
     preemptible: runtime_attributes.preemptible_tries

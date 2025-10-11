@@ -11,6 +11,7 @@ struct Sample {
 
   String? father_id
   String? mother_id
+  File? expected_edit
 }
 
 struct Family {
