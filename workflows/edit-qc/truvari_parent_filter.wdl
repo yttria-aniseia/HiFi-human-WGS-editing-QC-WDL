@@ -94,7 +94,7 @@ task bcftools_split_for_truvari {
   }
 
   Int threads = 2
-  Int mem_gb = 4
+  Int mem_gb = 8
   Int disk_size = ceil(size(truvari_merge_vcf, "GB") * 3 + 20)
 
   command <<<
@@ -103,7 +103,7 @@ task bcftools_split_for_truvari {
     # Step 2: bcftools split to create per-sample VCFs, excluding uncalled and reference genotypes
     mkdir -p truvari_merge_split
     bcftools sort \
-      --max-mem "~{mem_gb}G" \
+      --max-mem "~{mem_gb/2}G" \
       -O z \
       ~{truvari_merge_vcf} \
       | \
@@ -125,7 +125,7 @@ task bcftools_split_for_truvari {
   runtime {
     docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
     cpu: threads
-    memory: mem_gb + " GB"
+    memory: mem_gb + " GiB"
     disk: disk_size + " GB"
     disks: "local-disk " + disk_size + " HDD"
     preemptible: runtime_attributes.preemptible_tries

@@ -10,7 +10,7 @@ task bcftools_norm_split_multiallelic {
         File ref_fasta_index
         String out_prefix = "normalized"
         Int threads = 4
-        Int mem_gb = 8
+        Int mem_gb = 16
         RuntimeAttributes runtime_attributes
     }
 
@@ -23,7 +23,7 @@ task bcftools_norm_split_multiallelic {
         bcftools --version
 
         bcftools sort \
-            --max-mem "~{mem_gb}G" \
+            --max-mem "~{mem_gb / 2}G" \
             -O z \
             ~{input_vcf} \
             | \
@@ -34,7 +34,7 @@ task bcftools_norm_split_multiallelic {
             -O z \
             | \
         bcftools sort \
-            --max-mem "~{mem_gb}G" \
+            --max-mem "~{mem_gb / 2}G" \
             -Wtbi \
             -O z \
             -o ~{output_vcf} \
@@ -48,7 +48,7 @@ task bcftools_norm_split_multiallelic {
     runtime {
         docker: "quay.io/biocontainers/bcftools@sha256:065115d2fbdcba9b9a9d360fe9f024ba829de2e64309a637a274ed47e0af17db"
         cpu: threads
-        memory: "~{mem_gb} GB"
+        memory: "~{mem_gb} GiB"
         disk: file_size + " GB"
         maxRetries: 2
         preemptible: 1
