@@ -14,6 +14,7 @@ import "edit-qc/bcftools_norm.wdl" as Bcftools_norm
 import "edit-qc/truvari_parent_filter.wdl" as TruvariParentFilter
 import "edit-qc/crispr_edit_qc.wdl" as CrisprEditQC
 import "edit-qc/plot_cnv.wdl" as PlotCNV
+import "edit-qc/offtarget.wdl" as OffTarget
 import "somatic_ports/somatic_annotation.wdl" as Somatic_annotation
 import "somatic_ports/somatic_calling.wdl" as Somatic_calling
 
@@ -122,6 +123,14 @@ workflow humanwgs_family {
       default_runtime_attributes = default_runtime_attributes
   }
 
+  # Generate guidescan index for off-target analysis
+  call OffTarget.guidescan_index {
+    input:
+      ref_fasta          = ref_map["fasta"],              # !FileCoercion
+      index_name         = "hg38",
+      runtime_attributes = default_runtime_attributes
+  }
+
   Boolean single_sample = length(family.samples) == 1
 
   Map[String, String] pedigree_sex = {
@@ -173,6 +182,17 @@ workflow humanwgs_family {
           sample_id = sample.sample_id,
           fasta_reads = upstream.fasta_output,
           crispr_edit_json = select_first([sample.expected_edit]),
+          runtime_attributes = default_runtime_attributes
+      }
+
+      # Off-target analysis using guidescan
+      call OffTarget.guidescan_search {
+        input:
+          sample_id = sample.sample_id,
+          crispr_edit_json = select_first([sample.expected_edit]),
+          guidescan_index = guidescan_index.guidescan_index,
+          mismatches = 4,
+          threads = 24,
           runtime_attributes = default_runtime_attributes
       }
     }
@@ -762,6 +782,11 @@ workflow humanwgs_family {
     Array[File?] edit_qc_filtered_reads_fasta   = crispr_edit_qc.filtered_reads_fasta
     Array[File?] edit_qc_parts_alignment_paf    = crispr_edit_qc.parts_alignment_paf
     Array[File?] edit_qc_wide_faithful_tsv      = crispr_edit_qc.wide_faithful_table
+
+    # Off-target analysis outputs
+    Array[File?] offtarget_kmer_csv   = guidescan_search.kmer_csv
+    Array[File?] offtarget_csv        = guidescan_search.offtarget_csv
+    Array[File?] offtarget_bed        = guidescan_search.offtarget_bed
 
     # CNVpytor outputs
     Array[File] cnvpytor_pytor_file      = cnvpytor_plot.pytor_file
