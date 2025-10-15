@@ -58,6 +58,7 @@ task hifiasm_assembly {
         cd "${TMPDIR:-/tmp}"
         hifiasm -o "${WDIR}/${name}.asm" -t ~{threads} ~{input_fasta}
         cd "${WDIR}"
+        rm *ec.bin *ovlp.reverse.bin *ovlp.source.bin
     >>>
 
     output {
