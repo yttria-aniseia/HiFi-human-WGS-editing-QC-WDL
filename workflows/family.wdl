@@ -13,6 +13,7 @@ import "edit-qc/bcftools_aux.wdl" as Bcftools_aux
 import "edit-qc/bcftools_norm.wdl" as Bcftools_norm
 import "edit-qc/truvari_parent_filter.wdl" as TruvariParentFilter
 import "edit-qc/crispr_edit_qc.wdl" as CrisprEditQC
+import "edit-qc/plot_cnv.wdl" as PlotCNV
 import "somatic_ports/somatic_annotation.wdl" as Somatic_annotation
 import "somatic_ports/somatic_calling.wdl" as Somatic_calling
 
@@ -174,6 +175,15 @@ workflow humanwgs_family {
           crispr_edit_json = select_first([sample.expected_edit]),
           runtime_attributes = default_runtime_attributes
       }
+    }
+
+    # CNVpytor Manhattan plot generation for all samples
+    call PlotCNV.cnvpytor_plot {
+      input:
+        sample_id = sample.sample_id,
+        aligned_bam = upstream.out_bam,
+        aligned_bam_index = upstream.out_bam_index,
+        runtime_attributes = default_runtime_attributes
     }
   }
 
@@ -752,6 +762,11 @@ workflow humanwgs_family {
     Array[File?] edit_qc_filtered_reads_fasta   = crispr_edit_qc.filtered_reads_fasta
     Array[File?] edit_qc_parts_alignment_paf    = crispr_edit_qc.parts_alignment_paf
     Array[File?] edit_qc_wide_faithful_tsv      = crispr_edit_qc.wide_faithful_table
+
+    # CNVpytor outputs
+    Array[File] cnvpytor_pytor_file      = cnvpytor_plot.pytor_file
+    Array[File] cnvpytor_calls_tsv       = cnvpytor_plot.calls_tsv
+    Array[File] cnvpytor_manhattan_plot  = cnvpytor_plot.manhattan_plot
 
     # qc messages
     Array[String] msg = flatten(
