@@ -580,12 +580,12 @@ workflow humanwgs_family {
     Array[String] inferred_sex                     = upstream.inferred_sex
 
     # mosdepth hg002 outputs
-    Array[File]   mosdepth_hg002_summary                 = upstream.mosdepth_hg002_summary
-    Array[File]   mosdepth_hg002_region_bed              = upstream.mosdepth_hg002_region_bed
-    Array[File]   mosdepth_hg002_region_bed_index        = upstream.mosdepth_hg002_region_bed_index
-    Array[File]   mosdepth_hg002_depth_distribution_plot = upstream.mosdepth_hg002_depth_distribution_plot
-    Array[String] stat_mean_depth_hg002                  = upstream.stat_mean_depth_hg002
-    Array[String] inferred_sex_hg002                     = upstream.inferred_sex_hg002
+    # Array[File]   mosdepth_hg002_summary                 = upstream.mosdepth_hg002_summary
+    # Array[File]   mosdepth_hg002_region_bed              = upstream.mosdepth_hg002_region_bed
+    # Array[File]   mosdepth_hg002_region_bed_index        = upstream.mosdepth_hg002_region_bed_index
+    # Array[File]   mosdepth_hg002_depth_distribution_plot = upstream.mosdepth_hg002_depth_distribution_plot
+    # Array[String] stat_mean_depth_hg002                  = upstream.stat_mean_depth_hg002
+    # Array[String] inferred_sex_hg002                     = upstream.inferred_sex_hg002
 
     # phasing stats
     Array[File]   phase_stats           = downstream.phase_stats
