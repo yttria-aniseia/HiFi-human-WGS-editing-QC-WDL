@@ -43,7 +43,7 @@ workflow crispr_edit_qc {
     runtime_attributes = runtime_attributes
   }
 
-  call CrisprEditTasks.samtools_filter_reads {
+  call CrisprEditTasks.extract_reads {
     input:
     fasta_reads = fasta_reads,
     matched_read_names = minimap2_align_reads.matched_read_names,
@@ -70,7 +70,7 @@ workflow crispr_edit_qc {
 
   output {
     File? parts_query_fasta = create_parts_query_fasta.parts_query_fasta
-    File? filtered_reads_fasta = samtools_filter_reads.filtered_reads_fasta
+    File? filtered_reads_fasta = extract_reads.filtered_reads_fasta
     File? parts_alignment_paf = minimap2_remap_parts.parts_alignment_paf
     File? summary_table = parse_edit_parts.summary_table
     File? faithful_table = parse_edit_parts.faithful_table

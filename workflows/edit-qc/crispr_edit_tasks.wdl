@@ -115,14 +115,14 @@ task minimap2_align_reads {
   }
 }
 
-task samtools_filter_reads {
+task extract_reads {
   meta {
-    description: "Use samtools to filter reads based on alignment results"
+    description: "filter reads based on alignment results"
   }
 
   parameter_meta {
-    fasta_reads: "FASTA converted reads"
-    initial_sam: "SAM file from minimap2 alignment"
+    fasta_reads: "FASTA converted reads (gzip compressed)"
+    matched_read_names: "Read names from minimap2 alignment hits"
   }
 
   input {
@@ -139,12 +139,10 @@ task samtools_filter_reads {
 
     # Extract matched reads to new FASTA using awk
     sort -u ~{matched_read_names} > matched_reads_uniq.txt
-    awk 'NR==FNR {h[$1]; next} /^>/ {p = substr($0, 2) in h} p' matched_reads_uniq.txt ~{fasta_reads}  > ~{out_prefix}_filtered_reads.fasta
+    awk 'NR==FNR {h[$1]; next} /^>/ {p = substr($0, 2) in h} p' matched_reads_uniq.txt <(gzip -dc ~{fasta_reads})  > ~{out_prefix}_filtered_reads.fasta
 
     # Count reads
-    TOTAL_READS=$(grep -c '^>' ~{fasta_reads})
     MATCHED_READS=$(grep -c '^>' ~{out_prefix}_filtered_reads.fasta || echo 0)
-    echo "Total reads in input: $TOTAL_READS"
     echo "Reads matching edit parts: $MATCHED_READS"
   >>>
 
