@@ -53,7 +53,7 @@ workflow crispr_edit_qc {
 
   call CrisprEditTasks.minimap2_remap_parts {
     input:
-    filtered_reads_fasta = samtools_filter_reads.filtered_reads_fasta,
+    filtered_reads_fasta = extract_reads.filtered_reads_fasta,
     parts_query_fasta = create_parts_query_fasta.parts_query_fasta,
     sample_id = sample_id,
     runtime_attributes = runtime_attributes
@@ -66,7 +66,6 @@ workflow crispr_edit_qc {
     sample_id = sample_id,
     runtime_attributes = runtime_attributes
   }
-
 
   output {
     File? parts_query_fasta = create_parts_query_fasta.parts_query_fasta

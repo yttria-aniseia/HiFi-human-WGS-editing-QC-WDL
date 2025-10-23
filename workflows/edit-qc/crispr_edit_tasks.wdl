@@ -9,10 +9,12 @@ task create_parts_query_fasta {
 
   parameter_meta {
     crispr_edit_json: "JSON file describing CRISPR edit with left_ha, payload, right_ha sequences"
+    include_payload_components: "Include payload_components as separate FASTA entries for detailed annotation"
   }
 
   input {
     File crispr_edit_json
+    Boolean include_payload_components = false
     RuntimeAttributes runtime_attributes
   }
 
@@ -30,20 +32,29 @@ import sys
 with open("~{crispr_edit_json}", 'r') as f:
     crispr_data = json.load(f)
 
+include_components = ~{true="True" false="False" include_payload_components}
+
 # Create parts query FASTA
 with open("~{out_prefix}_parts_query.fasta", 'w') as fasta_out:
     for edit in crispr_data['edits']:
-        edit_id = edit['id']
+        edit_id = edit['id'].replace(" ", "_")
         left_ha = edit['edit']['left_ha']
-        payload = edit['edit']['payload']  
+        payload = edit['edit']['payload']
         right_ha = edit['edit']['right_ha']
-        
+
         # Write each part as separate FASTA entry
         fasta_out.write(f">{edit_id}_left_HA\n{left_ha}\n")
         fasta_out.write(f">{edit_id}_payload\n{payload}\n")
         fasta_out.write(f">{edit_id}_right_HA\n{right_ha}\n")
         fasta_out.write(f">{edit_id}_HDR_template\n{left_ha}{payload}{right_ha}\n")
         fasta_out.write(f">{edit_id}_WT_template\n{left_ha}{right_ha}\n")
+
+        # Optionally include payload components for detailed annotation
+        if include_components and 'payload_components' in edit['edit']:
+            for component in edit['edit']['payload_components']:
+                comp_name = component['name'].replace(" ", "_")
+                comp_seq = component['seq']
+                fasta_out.write(f">{comp_name}\n{comp_seq}\n")
 EOF
 >>>
 
@@ -65,7 +76,7 @@ EOF
 
 task minimap2_align_reads {
   meta {
-    description: "Use minimap2 to align edit parts to reads"
+    description: "Use minimap2 to identify ALL reads containing edit parts"
   }
 
   parameter_meta {
@@ -162,6 +173,7 @@ task extract_reads {
   }
 }
 
+
 task minimap2_remap_parts {
   meta {
     description: "Remap edit parts to filtered reads with relaxed parameters"
@@ -184,9 +196,7 @@ task minimap2_remap_parts {
   command <<<
     set -euxo pipefail
 
-    minimap2 -cx asm10 \
-        -N 1000 \
-        -p 0.5 \
+    minimap2 -cx asm10 -N 1000 -p 0.5 \
         ~{filtered_reads_fasta} ~{parts_query_fasta} \
         > ~{out_prefix}_minimap2_crispr_parts.paf
 
@@ -381,3 +391,4 @@ EOF
     zones: runtime_attributes.zones
   }
 }
+

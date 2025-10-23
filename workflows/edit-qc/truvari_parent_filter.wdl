@@ -79,17 +79,11 @@ task bcftools_split_for_truvari {
     runtime_attributes: {
       name: "Runtime attribute structure"
     }
-    split_vcfs: {
-      name: "Array of per-sample VCF files"
-    }
-    sample_order_file: {
-      name: "File containing sample order"
-    }
   }
 
   input {
     File truvari_merge_vcf
-    String out_prefix = "family_merged"
+    String out_suffix = ""
     RuntimeAttributes runtime_attributes
   }
 
@@ -112,8 +106,15 @@ task bcftools_split_for_truvari {
       -o truvari_merge_split \
       -e 'GT="mis" || GT="ref"'
 
+		for file in truvari_merge_split/*.vcf.gz; do
+    	mv "$file" "${file%.vcf.gz}~{out_suffix}.vcf.gz"
+		done
+		for file in truvari_merge_split/*.vcf.gz.csi; do
+    	mv "$file" "${file%.vcf.gz.csi}~{out_suffix}.vcf.gz.csi"
+		done
+
     # Step 3: need to pass exact input sample order to consistency
-    bcftools query -l ~{truvari_merge_vcf} > sample_order.txt
+    bcftools query -l ~{truvari_merge_vcf} | sed 's/$/~{out_suffix}/g' > sample_order.txt
   >>>
 
   output {
