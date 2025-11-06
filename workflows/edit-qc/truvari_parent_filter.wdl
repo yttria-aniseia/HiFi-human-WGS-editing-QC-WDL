@@ -104,7 +104,7 @@ task bcftools_split_for_truvari {
     bcftools +split -W \
       -Oz \
       -o truvari_merge_split \
-      -e 'GT="mis" || GT="ref"'
+      -e 'GT=".|." || GT="./." || GT="." || GT="ref"'
 
 		for file in truvari_merge_split/*.vcf.gz; do
     	mv "$file" "${file%.vcf.gz}~{out_suffix}.vcf.gz"
