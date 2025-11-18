@@ -103,7 +103,7 @@ task minimap2_align_reads {
     set -euxo pipefail
 
     # Initial alignment to identify reads with any edit parts
-    minimap2 -a -x map-hifi --split-prefix "~{sample_id}" -p ~{min_identity} -t ~{threads} \
+    minimap2 -a -x map-hifi -p ~{min_identity} -t ~{threads} \
       ~{fasta_reads} ~{parts_query_fasta} | grep -v "^@" | cut -f3 > ~{out_prefix}_hit_names.txt
 
     # Count alignments
