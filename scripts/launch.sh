@@ -164,17 +164,29 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import filecmp
 import subprocess
 from pathlib import Path
 
-def should_copy_file(src_path, dest_path):
-    """Check if file should be copied (doesn't exist or is different)"""
+def should_copy_file(dest_path):
+    """Check if file should be created (doesn't exist or has missing EOF block)"""
     if not dest_path.exists():
         return True
 
+    # Run samtools quickcheck to verify BAM integrity
+    result = subprocess.run(
+        ["samtools", "quickcheck", str(dest_path)],
+        capture_output=True,
+        text=True
+    )
+
+    # Only regenerate if output mentions "missing EOF block"
+    if result.returncode != 0 and "missing EOF block" in result.stderr:
+        print(f"  File {dest_path} has missing EOF block, will regenerate")
+        return True
+
     return False
-    #return not filecmp.cmp(src_path, dest_path, shallow=True)
 
 if len(sys.argv) != 2:
     print("Usage: python3 process_config.py <input_config_json>")
@@ -198,36 +210,52 @@ if "humanwgs_family.family" in config:
     
     for sample in family["samples"]:
         new_sample = sample.copy()
-        new_hifi_reads = []
-        
-        # Copy HiFi reads files using samtools to strip tags
-        for i, hifi_read_path in enumerate(sample["hifi_reads"]):
-            if os.path.exists(hifi_read_path):
-                filename = f"{sample['sample_id']}_hifi_reads_{i}.bam"
-                dest_path = inputs_dir / filename
 
-                if should_copy_file(hifi_read_path, dest_path):
-                    print(f"Copying {hifi_read_path} -> {dest_path} (stripping tags: fi,ri,fp,rp,ip,pw,ls)")
-                    subprocess.run([
-                    		"samtools", "reset", "-@", "8",
-                    		"--keep-tag", "RG", "--keep-tag", "ls", "--keep-tag", "ql",
-                    		"--keep-tag", "qt", "--keep-tag", "qe", "--keep-tag", "bc",
-                    		"--keep-tag", "cx", "--keep-tag", "bt", "--keep-tag", "zm",
-                    		"--keep-tag", "ws", "--keep-tag", "we", "--keep-tag", "sn",
-                    		"--keep-tag", "rq", "--keep-tag", "ML", "--keep-tag", "MM",
-                    		"--keep-tag", "ac", "--keep-tag", "bx", "--keep-tag", "ec",
-                    		"--keep-tag", "ma", "--keep-tag", "np",
-                        hifi_read_path, "-o", str(dest_path)
-                    ], check=True)
-                else:
-                    print(f"Skipping {hifi_read_path} -> {dest_path} (already exists and identical)")
+        # Merge all HiFi reads files into one BAM while stripping tags
+        merged_filename = f"{sample['sample_id']}_hifi_reads_merged.bam"
+        dest_path = inputs_dir / merged_filename
 
-                new_hifi_reads.append(str(dest_path.absolute()))
-            else:
-                print(f"Warning: HiFi reads file not found: {hifi_read_path}")
-                new_hifi_reads.append(hifi_read_path)  # Keep original path
-        
-        new_sample["hifi_reads"] = new_hifi_reads
+        # Check if all input files exist
+        all_exist = all(os.path.exists(hifi_read_path) for hifi_read_path in sample["hifi_reads"])
+
+        if all_exist and should_copy_file(dest_path):
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                tmpdir_path = Path(tmpdirname)
+                temp_path = tmpdir_path / f"{sample['sample_id']}_hifi_reads_temp.bam"
+                print(f"Merging {len(sample['hifi_reads'])} HiFi read files -> {dest_path} (stripping tags: fi,ri,fp,rp,ip,pw,HP,PS,PC)")
+
+                # Step 1: Concatenate BAM files
+                print(f"  Step 1/2: Concatenating BAM files...")
+                subprocess.run([
+                    "samtools", "cat",
+                    "-o", str(temp_path)
+                ] + sample["hifi_reads"], check=True)
+
+                # Step 3: Strip tags using samtools reset
+                print(f"  Step 2/2: Stripping tags...")
+                subprocess.run([
+                    "samtools", "reset",
+                    "--thread", "15",
+                    "--remove-tag", "fi,ri,fp,rp,ip,pw,HP,PS,PC",
+                    "-o", str(dest_path),
+                    str(temp_path)
+                ], check=True)
+
+                # Clean up temporary files
+                temp_path.unlink()
+
+            new_sample["hifi_reads"] = [str(dest_path.absolute())]
+        elif all_exist:
+            print(f"Skipping merge for {sample['sample_id']} -> {dest_path} (already exists)")
+            new_sample["hifi_reads"] = [str(dest_path.absolute())]
+        else:
+            # Some files don't exist, keep original paths and warn
+            print(f"Warning: Some HiFi reads files not found for {sample['sample_id']}")
+            for hifi_read_path in sample["hifi_reads"]:
+                if not os.path.exists(hifi_read_path):
+                    print(f"  Missing: {hifi_read_path}")
+            new_sample["hifi_reads"] = sample["hifi_reads"]  # Keep original paths
+
         new_family["samples"].append(new_sample)
     
     new_config["humanwgs_family.family"] = new_family
@@ -241,12 +269,12 @@ for ref_key in ref_files:
         if os.path.exists(ref_path):
             filename = f"{ref_key}.tsv"
             dest_path = inputs_dir / filename
-            
-            if should_copy_file(ref_path, dest_path):
+
+            if should_copy_file(dest_path):
                 print(f"Copying {ref_path} -> {dest_path}")
                 shutil.copy2(ref_path, dest_path)
             else:
-                print(f"Skipping {ref_path} -> {dest_path} (already exists and identical)")
+                print(f"Skipping {ref_path} -> {dest_path} (already exists)")
             
             new_config[full_key] = str(dest_path.absolute())
         else:

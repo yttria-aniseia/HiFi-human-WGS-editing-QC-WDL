@@ -79,22 +79,16 @@ task bcftools_split_for_truvari {
     runtime_attributes: {
       name: "Runtime attribute structure"
     }
-    split_vcfs: {
-      name: "Array of per-sample VCF files"
-    }
-    sample_order_file: {
-      name: "File containing sample order"
-    }
   }
 
   input {
     File truvari_merge_vcf
-    String out_prefix = "family_merged"
+    String out_suffix = ""
     RuntimeAttributes runtime_attributes
   }
 
   Int threads = 2
-  Int mem_gb = 4
+  Int mem_gb = 8
   Int disk_size = ceil(size(truvari_merge_vcf, "GB") * 3 + 20)
 
   command <<<
@@ -103,17 +97,24 @@ task bcftools_split_for_truvari {
     # Step 2: bcftools split to create per-sample VCFs, excluding uncalled and reference genotypes
     mkdir -p truvari_merge_split
     bcftools sort \
-      --max-mem "~{mem_gb}G" \
+      --max-mem "~{mem_gb/2}G" \
       -O z \
       ~{truvari_merge_vcf} \
       | \
     bcftools +split -W \
       -Oz \
       -o truvari_merge_split \
-      -e 'GT="mis" || GT="ref"'
+      -e 'GT=".|." || GT="./." || GT="." || GT="ref"'
+
+		for file in truvari_merge_split/*.vcf.gz; do
+    	mv "$file" "${file%.vcf.gz}~{out_suffix}.vcf.gz"
+		done
+		for file in truvari_merge_split/*.vcf.gz.csi; do
+    	mv "$file" "${file%.vcf.gz.csi}~{out_suffix}.vcf.gz.csi"
+		done
 
     # Step 3: need to pass exact input sample order to consistency
-    bcftools query -l ~{truvari_merge_vcf} > sample_order.txt
+    bcftools query -l ~{truvari_merge_vcf} | sed 's/$/~{out_suffix}/g' > sample_order.txt
   >>>
 
   output {
@@ -125,7 +126,7 @@ task bcftools_split_for_truvari {
   runtime {
     docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
     cpu: threads
-    memory: mem_gb + " GB"
+    memory: mem_gb + " GiB"
     disk: disk_size + " GB"
     disks: "local-disk " + disk_size + " HDD"
     preemptible: runtime_attributes.preemptible_tries

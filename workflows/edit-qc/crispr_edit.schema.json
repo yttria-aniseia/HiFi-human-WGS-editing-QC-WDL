@@ -6,7 +6,9 @@
   "type": "object",
   "properties": {
     "ref": {
-      "enum": ["hg38"],
+      "enum": [
+        "hg38"
+      ],
       "description": "reference assembly target coordinates are valid in"
     },
     "edits": {
@@ -48,11 +50,18 @@
             "type": "object",
             "properties": {
               "type": {
-                "enum": ["SNV", "INS", "DEL"],
+                "enum": [
+                  "SNV",
+                  "INS",
+                  "DEL"
+                ],
                 "description": "expected edit type: SNV for single-base mutation.  INS for large insertions, DEL for large deletions"
               },
               "strand": {
-                "enum": ["+", "-"]
+                "enum": [
+                  "+",
+                  "-"
+                ]
               },
               "guide": {
                 "type": "string",
@@ -69,28 +78,53 @@
               "right_ha": {
                 "type": "string",
                 "description": "right homology arm sequence"
-              }
-            },
-            "required": [
-              "type",
-              "strand",
-              "guide",
-              "left_ha",
-              "payload",
-              "right_ha"
-            ]
-          }
+              },
+              "payload_components": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/NamedSequence"
+                }
+              },
+              "required": [
+                "type",
+                "strand",
+                "guide",
+                "left_ha",
+                "payload",
+                "right_ha"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "target",
+            "edit"
+          ]
+        }
+      }
+    },
+    "required": [
+      "ref",
+      "edits"
+    ]
+  },
+  "$defs": {
+    "NamedSequence": {
+      "type": "object",
+      "required": [
+        "name",
+        "seq"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Component name for use in annotation"
         },
-        "required": [
-          "id",
-          "target",
-          "edit"
-        ]
+        "seq": {
+          "type": "string",
+          "description": "Component sequence for alignment search in edit site annotation"
+        }
       }
     }
-  },
-  "required": [
-    "ref",
-    "edits"
-  ]
+  }
 }

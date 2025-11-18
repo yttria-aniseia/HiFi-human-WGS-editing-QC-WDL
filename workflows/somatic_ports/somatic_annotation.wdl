@@ -284,7 +284,7 @@ task prioritize_small_variants {
     csvtk version
 
     echo -e "CHROM\tPOS\tREF\tALT\tFORMAT\t~{pname}\t$(bcftools +split-vep ~{vep_annotated_vcf} -l | cut -f2 | tr '\n' '\t' | sed 's/\t$//g')" > ~{fname}
-     bcftools view -s ~{sample} -e 'GT="ref"||GT="mis"' ~{vep_annotated_vcf} | bcftools +split-vep -A tab -f '%CHROM\t%POS\t%REF\t%ALT\t%FORMAT\t%CSQ\n' >> ~{fname}
+     bcftools view -s ~{sample} -e 'GT=".|." || GT="./." || GT="." || GT="ref"' ~{vep_annotated_vcf} | bcftools +split-vep -A tab -f '%CHROM\t%POS\t%REF\t%ALT\t%FORMAT\t%CSQ\n' >> ~{fname}
 
     #RANKING AND FILTERING
     [[ -f "~{fname}" ]] || { echo "ERROR: ${fname} not found" >&2; exit 1; }

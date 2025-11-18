@@ -13,6 +13,9 @@ import "edit-qc/bcftools_aux.wdl" as Bcftools_aux
 import "edit-qc/bcftools_norm.wdl" as Bcftools_norm
 import "edit-qc/truvari_parent_filter.wdl" as TruvariParentFilter
 import "edit-qc/crispr_edit_qc.wdl" as CrisprEditQC
+import "edit-qc/crispr_edit_consensus.wdl" as CrisprEditConsensus
+import "edit-qc/plot_cnv.wdl" as PlotCNV
+import "edit-qc/offtarget.wdl" as OffTarget
 import "somatic_ports/somatic_annotation.wdl" as Somatic_annotation
 import "somatic_ports/somatic_calling.wdl" as Somatic_calling
 
@@ -121,6 +124,14 @@ workflow humanwgs_family {
       default_runtime_attributes = default_runtime_attributes
   }
 
+  # Generate guidescan index for off-target analysis
+  call OffTarget.guidescan_index {
+    input:
+      ref_fasta          = ref_map["fasta"],              # !FileCoercion
+      index_name         = "hg38",
+      runtime_attributes = default_runtime_attributes
+  }
+
   Boolean single_sample = length(family.samples) == 1
 
   Map[String, String] pedigree_sex = {
@@ -174,6 +185,47 @@ workflow humanwgs_family {
           crispr_edit_json = select_first([sample.expected_edit]),
           runtime_attributes = default_runtime_attributes
       }
+
+      # Off-target analysis using guidescan (3 steps)
+      # Step 1: Create kmer CSV
+      call OffTarget.create_kmer_csv {
+        input:
+          sample_id = sample.sample_id,
+          crispr_edit_json = select_first([sample.expected_edit]),
+          runtime_attributes = default_runtime_attributes
+      }
+
+      # Step 2: Enumerate off-targets with guidescan
+      call OffTarget.guidescan_enumerate {
+        input:
+          sample_id = sample.sample_id,
+          kmer_csv = create_kmer_csv.kmer_csv,
+          index_forward = guidescan_index.index_forward,
+          index_gs = guidescan_index.index_gs,
+          index_reverse = guidescan_index.index_reverse,
+          index_prefix = "hg38",
+          mismatches = 4,
+          threads = 24,
+          runtime_attributes = default_runtime_attributes
+      }
+
+      # Step 3: Convert to BED format
+      call OffTarget.convert_offtarget_to_bed {
+        input:
+          sample_id = sample.sample_id,
+          offtarget_csv = guidescan_enumerate.offtarget_csv,
+          crispr_edit_json = select_first([sample.expected_edit]),
+          runtime_attributes = default_runtime_attributes
+      }
+    }
+
+    # CNVpytor Manhattan plot generation for all samples
+    call PlotCNV.cnvpytor_plot {
+      input:
+        sample_id = sample.sample_id,
+        aligned_bam = upstream.out_bam,
+        aligned_bam_index = upstream.out_bam_index,
+        runtime_attributes = default_runtime_attributes
     }
   }
 
@@ -341,7 +393,7 @@ workflow humanwgs_family {
     call TruvariParentFilter.bcftools_split_for_truvari as bcftools_split_sv {
       input:
       truvari_merge_vcf  = truvari_collapse_sv.truvari_merge_vcf,
-      out_prefix         = "~{family.family_id}.sv.parent_filter",
+      out_suffix         = "_sv",
       runtime_attributes = default_runtime_attributes
     }
 
@@ -365,7 +417,7 @@ workflow humanwgs_family {
     call TruvariParentFilter.bcftools_split_for_truvari as bcftools_split_small_variants {
       input:
       truvari_merge_vcf  = truvari_collapse_small_variants.truvari_merge_vcf,
-      out_prefix         = "~{family.family_id}.small_variants.parent_filter",
+      out_suffix         = "_small_variant",
       runtime_attributes = default_runtime_attributes
     }
 
@@ -379,6 +431,23 @@ workflow humanwgs_family {
     }
 
     scatter (sample_index in range(length(family.samples))) {
+	    # Consensus-based CRISPR edit annotation - runs only if expected_edit is provided
+	    if (defined(family.samples[sample_index].expected_edit)) {
+	      call CrisprEditConsensus.crispr_edit_consensus {
+	        input:
+	          sample_id = sample_id[sample_index],
+	          haplotagged_bam = downstream.merged_haplotagged_bam[sample_index],
+	          haplotagged_bam_index = downstream.merged_haplotagged_bam_index[sample_index],
+	          ref_fasta = ref_map["fasta"],  # !FileCoercion
+	          ref_fasta_index = ref_map["fasta_index"],  # !FileCoercion
+	          small_variant_vcf = bcftools_split_small_variants.split_vcfs[sample_index],
+	          small_variant_vcf_index = bcftools_split_small_variants.split_vcfs_index[sample_index],
+	          sv_vcf = bcftools_split_sv.split_vcfs[sample_index],
+	          sv_vcf_index = bcftools_split_sv.split_vcfs_index[sample_index],
+	          crispr_edit_json = select_first([family.samples[sample_index].expected_edit]),
+	          runtime_attributes = default_runtime_attributes
+	      }
+	    }
 
       # Sex matching, if sample is male, we use male parent, if female we use female parent.
       # if no sex given for sample, use father sample by default.
@@ -436,6 +505,29 @@ workflow humanwgs_family {
         #     annotsv_cache = somatic_map["annotsv_cache"],                           # !FileCoercion
         #     threads       = 2
       # }
+
+
+	    # Consensus-based CRISPR edit annotation - runs only if expected_edit is provided
+	    if (defined(family.samples[sample_index].expected_edit)) {
+	      # Parent consensus annotation - for wild type comparison
+	      if (defined(parent_id)) {
+	        Int parent_idx = sidx_by_id[select_first([parent_id])]
+	        call CrisprEditConsensus.crispr_edit_consensus as parent_consensus {
+	          input:
+	            sample_id = select_first([parent_id]),
+	            haplotagged_bam = bam_files_by_id[select_first([parent_id])],
+	            haplotagged_bam_index = bam_index_by_id[select_first([parent_id])],
+	            ref_fasta = ref_map["fasta"],  # !FileCoercion
+	            ref_fasta_index = ref_map["fasta_index"],  # !FileCoercion
+	            small_variant_vcf = bcftools_split_small_variants.split_vcfs[parent_idx],
+	            small_variant_vcf_index = bcftools_split_small_variants.split_vcfs_index[parent_idx],
+	            sv_vcf = bcftools_split_sv.split_vcfs[parent_idx],
+	            sv_vcf_index = bcftools_split_sv.split_vcfs_index[parent_idx],
+	            crispr_edit_json = select_first([family.samples[sample_index].expected_edit]),
+	            runtime_attributes = default_runtime_attributes
+	        }
+	      }
+      }
 
 
       # parent filtering
@@ -570,12 +662,12 @@ workflow humanwgs_family {
     Array[String] inferred_sex                     = upstream.inferred_sex
 
     # mosdepth hg002 outputs
-    Array[File]   mosdepth_hg002_summary                 = upstream.mosdepth_hg002_summary
-    Array[File]   mosdepth_hg002_region_bed              = upstream.mosdepth_hg002_region_bed
-    Array[File]   mosdepth_hg002_region_bed_index        = upstream.mosdepth_hg002_region_bed_index
-    Array[File]   mosdepth_hg002_depth_distribution_plot = upstream.mosdepth_hg002_depth_distribution_plot
-    Array[String] stat_mean_depth_hg002                  = upstream.stat_mean_depth_hg002
-    Array[String] inferred_sex_hg002                     = upstream.inferred_sex_hg002
+    # Array[File]   mosdepth_hg002_summary                 = upstream.mosdepth_hg002_summary
+    # Array[File]   mosdepth_hg002_region_bed              = upstream.mosdepth_hg002_region_bed
+    # Array[File]   mosdepth_hg002_region_bed_index        = upstream.mosdepth_hg002_region_bed_index
+    # Array[File]   mosdepth_hg002_depth_distribution_plot = upstream.mosdepth_hg002_depth_distribution_plot
+    # Array[String] stat_mean_depth_hg002                  = upstream.stat_mean_depth_hg002
+    # Array[String] inferred_sex_hg002                     = upstream.inferred_sex_hg002
 
     # phasing stats
     Array[File]   phase_stats           = downstream.phase_stats
@@ -705,8 +797,10 @@ workflow humanwgs_family {
     Array[File]? truvari_sv_vcf                       = bcftools_split_sv.split_vcfs
     Array[File]? truvari_sv_vcf_index                 = bcftools_split_sv.split_vcfs_index
 
-    Array[File]? parent_filtered_small_variant_vcf = parent_filter_small_variants.filtered_vcf
-    Array[File]? parent_filtered_sv_vcf            = parent_filter_sv.filtered_vcf
+    Array[File]? parent_filtered_small_variant_vcf       = parent_filter_small_variants.filtered_vcf
+    Array[File]? parent_filtered_small_variant_vcf_index = parent_filter_small_variants.filtered_vcf_index
+    Array[File]? parent_filtered_sv_vcf                  = parent_filter_sv.filtered_vcf
+    Array[File]? parent_filtered_sv_vcf_index            = parent_filter_sv.filtered_vcf_index
 
     # Somatic SV calling
     # Array[File] Severus_somatic_vcf                           = select_all(select_first([phased_severus.output_vcf]))
@@ -748,10 +842,26 @@ workflow humanwgs_family {
     File? tertiary_sv_filtered_vcf_index                = tertiary_analysis.sv_filtered_vcf_index
     File? tertiary_sv_filtered_tsv                      = tertiary_analysis.sv_filtered_tsv
 
-    # CRISPR edit QC outputs
+    # CRISPR edit QC outputs (read-based)
     Array[File?] edit_qc_filtered_reads_fasta   = crispr_edit_qc.filtered_reads_fasta
     Array[File?] edit_qc_parts_alignment_paf    = crispr_edit_qc.parts_alignment_paf
     Array[File?] edit_qc_wide_faithful_tsv      = crispr_edit_qc.wide_faithful_table
+
+    # CRISPR edit consensus annotation outputs
+    Array[File?]? edit_consensus_genbank          = crispr_edit_consensus.genbank_annotations
+    Array[File?]? edit_consensus_summary          = crispr_edit_consensus.annotation_summary
+    Array[File?]? parent_consensus_genbank       = parent_consensus.genbank_annotations
+    Array[File?]? parent_consensus_summary       = parent_consensus.annotation_summary
+
+    # Off-target analysis outputs
+    Array[File?] offtarget_kmer_csv   = create_kmer_csv.kmer_csv
+    Array[File?] offtarget_csv        = guidescan_enumerate.offtarget_csv
+    Array[File?] offtarget_bed        = convert_offtarget_to_bed.offtarget_bed
+
+    # CNVpytor outputs
+    Array[File] cnvpytor_pytor_file      = cnvpytor_plot.pytor_file
+    Array[File] cnvpytor_calls_tsv       = cnvpytor_plot.calls_tsv
+    Array[File] cnvpytor_manhattan_plot  = cnvpytor_plot.manhattan_plot
 
     # qc messages
     Array[String] msg = flatten(

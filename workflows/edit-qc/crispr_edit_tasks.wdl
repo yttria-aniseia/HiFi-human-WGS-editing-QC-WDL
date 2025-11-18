@@ -9,10 +9,12 @@ task create_parts_query_fasta {
 
   parameter_meta {
     crispr_edit_json: "JSON file describing CRISPR edit with left_ha, payload, right_ha sequences"
+    include_payload_components: "Include payload_components as separate FASTA entries for detailed annotation"
   }
 
   input {
     File crispr_edit_json
+    Boolean include_payload_components = false
     RuntimeAttributes runtime_attributes
   }
 
@@ -30,20 +32,29 @@ import sys
 with open("~{crispr_edit_json}", 'r') as f:
     crispr_data = json.load(f)
 
+include_components = ~{true="True" false="False" include_payload_components}
+
 # Create parts query FASTA
 with open("~{out_prefix}_parts_query.fasta", 'w') as fasta_out:
     for edit in crispr_data['edits']:
-        edit_id = edit['id']
+        edit_id = edit['id'].replace(" ", "_")
         left_ha = edit['edit']['left_ha']
-        payload = edit['edit']['payload']  
+        payload = edit['edit']['payload']
         right_ha = edit['edit']['right_ha']
-        
+
         # Write each part as separate FASTA entry
         fasta_out.write(f">{edit_id}_left_HA\n{left_ha}\n")
         fasta_out.write(f">{edit_id}_payload\n{payload}\n")
         fasta_out.write(f">{edit_id}_right_HA\n{right_ha}\n")
         fasta_out.write(f">{edit_id}_HDR_template\n{left_ha}{payload}{right_ha}\n")
         fasta_out.write(f">{edit_id}_WT_template\n{left_ha}{right_ha}\n")
+
+        # Optionally include payload components for detailed annotation
+        if include_components and 'payload_components' in edit['edit']:
+            for component in edit['edit']['payload_components']:
+                comp_name = component['name'].replace(" ", "_")
+                comp_seq = component['seq']
+                fasta_out.write(f">{comp_name}\n{comp_seq}\n")
 EOF
 >>>
 
@@ -65,7 +76,7 @@ EOF
 
 task minimap2_align_reads {
   meta {
-    description: "Use minimap2 to align edit parts to reads"
+    description: "Use minimap2 to identify ALL reads containing edit parts"
   }
 
   parameter_meta {
@@ -92,7 +103,7 @@ task minimap2_align_reads {
     set -euxo pipefail
 
     # Initial alignment to identify reads with any edit parts
-    minimap2 -a -x map-hifi --split-prefix "~{sample_id}" -p ~{min_identity} -t ~{threads} \
+    minimap2 -a -x map-hifi -p ~{min_identity} -t ~{threads} \
       ~{fasta_reads} ~{parts_query_fasta} | grep -v "^@" | cut -f3 > ~{out_prefix}_hit_names.txt
 
     # Count alignments
@@ -115,14 +126,14 @@ task minimap2_align_reads {
   }
 }
 
-task samtools_filter_reads {
+task extract_reads {
   meta {
-    description: "Use samtools to filter reads based on alignment results"
+    description: "filter reads based on alignment results"
   }
 
   parameter_meta {
-    fasta_reads: "FASTA converted reads"
-    initial_sam: "SAM file from minimap2 alignment"
+    fasta_reads: "FASTA converted reads (gzip compressed)"
+    matched_read_names: "Read names from minimap2 alignment hits"
   }
 
   input {
@@ -139,12 +150,10 @@ task samtools_filter_reads {
 
     # Extract matched reads to new FASTA using awk
     sort -u ~{matched_read_names} > matched_reads_uniq.txt
-    awk 'NR==FNR {h[$1]; next} /^>/ {p = substr($0, 2) in h} p' matched_reads_uniq.txt ~{fasta_reads}  > ~{out_prefix}_filtered_reads.fasta
+    awk 'NR==FNR {h[$1]; next} /^>/ {p = substr($0, 2) in h} p' matched_reads_uniq.txt <(gzip -dc ~{fasta_reads})  > ~{out_prefix}_filtered_reads.fasta
 
     # Count reads
-    TOTAL_READS=$(grep -c '^>' ~{fasta_reads})
     MATCHED_READS=$(grep -c '^>' ~{out_prefix}_filtered_reads.fasta || echo 0)
-    echo "Total reads in input: $TOTAL_READS"
     echo "Reads matching edit parts: $MATCHED_READS"
   >>>
 
@@ -163,6 +172,7 @@ task samtools_filter_reads {
     zones: runtime_attributes.zones
   }
 }
+
 
 task minimap2_remap_parts {
   meta {
@@ -186,9 +196,7 @@ task minimap2_remap_parts {
   command <<<
     set -euxo pipefail
 
-    minimap2 -cx asm10 \
-        -N 1000 \
-        -p 0.5 \
+    minimap2 -cx asm10 -N 1000 -p 0.5 \
         ~{filtered_reads_fasta} ~{parts_query_fasta} \
         > ~{out_prefix}_minimap2_crispr_parts.paf
 
@@ -383,3 +391,4 @@ EOF
     zones: runtime_attributes.zones
   }
 }
+
