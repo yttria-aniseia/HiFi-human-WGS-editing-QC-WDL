@@ -73,7 +73,7 @@ task mosdepth {
 
     mosdepth \
       ~{if threads > 1 then "--threads " + (threads - 1) else ""} \
-      --by 500 \
+      --by 5000 \
       --no-per-base \
       --use-median \
       ~{out_prefix} \

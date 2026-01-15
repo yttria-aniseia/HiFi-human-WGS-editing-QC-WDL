@@ -356,7 +356,7 @@ workflow humanwgs_family {
 
     call Bcftools_norm.bcftools_norm_split_multiallelic as normalize_small_variants {
       input:
-      input_vcf           = select_first([merge_small_variant_vcfs.merged_vcf, downstream.phased_small_variant_vcf]),
+      input_vcf           = select_first([merge_small_variant_vcfs.merged_vcf, downstream.phased_small_variant_vcf[0]]),
       ref_fasta           = ref_map["fasta"],
       ref_fasta_index     = ref_map["fasta_index"],
       out_prefix          = "~{family.family_id}.small_variants.normalized",
@@ -365,8 +365,8 @@ workflow humanwgs_family {
 
     call Bcftools_norm.bcftools_norm_split_multiallelic as normalize_sv {
       input:
-      input_vcf           = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf]),
-      input_vcf_index     = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index]),
+      input_vcf           = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf[0]]),
+      input_vcf_index     = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index[0]]),
       ref_fasta           = ref_map["fasta"],
       ref_fasta_index     = ref_map["fasta_index"],
       out_prefix          = "~{family.family_id}.sv.normalized",

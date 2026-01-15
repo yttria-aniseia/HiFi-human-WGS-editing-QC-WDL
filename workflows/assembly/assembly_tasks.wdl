@@ -47,7 +47,7 @@ task hifiasm_assembly {
         RuntimeAttributes runtime_attributes
     }
 
-    Int mem_gb    = ceil(54 + 5*max(0, size(input_fasta, "GB") - 10))
+    Int mem_gb    = ceil(54 + 6*max(0, size(input_fasta, "GB") - 10))
     Int disk_size = ceil(size(input_fasta, "GB") * 3 + 70)
 
     command <<<
@@ -220,7 +220,7 @@ task pav {
     cd "${OUTPUT_DIR}"
 
     # --nt parameter prevents the .fai read error common in pav 2.x.x, allegedly will be fixed in pav 3
-    snakemake -s /opt/pav/Snakefile --nt ${CLEAN_NAME}.vcf.gz
+    snakemake -s /opt/pav/Snakefile --nt ${CLEAN_NAME}.vcf.gz --quiet host reason rules
   >>>
 
   output {
