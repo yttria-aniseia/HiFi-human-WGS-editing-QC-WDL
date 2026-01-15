@@ -1,0 +1,9 @@
+name: hifi-wdl
+channels:
+  - conda-forge
+dependencies:
+  - miniwdl
+  - singularity
+  - miniwdl-slurm
+  - biopython
+  - samtools

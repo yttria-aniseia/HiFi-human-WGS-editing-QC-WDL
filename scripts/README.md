@@ -40,31 +40,17 @@ The `launch.sh` script automates the entire setup process for running the HiFi h
 
 ### What the Script Does
 
-1. **Setup Validation**: Checks that required files, directories, and configurations exist
-2. **Directory Creation**: Creates organized work directory structure:
-   ```
-   work_directory/
-   ├── inputs/                    # Intelligently copied input files
-   ├── outputs/                   # Workflow outputs (created during execution)
-   ├── logs/                      # Execution logs
-   ├── miniwdl.cfg               # MiniWDL configuration (from repo root or custom)
-   ├── family.hpc.inputs.json    # Generated inputs file with local paths
-   └── run_workflow.sh           # Executable run script (runs from repo root)
-   ```
-3. **Smart File Management**: Intelligently copies input files with duplicate detection
-   - Skips files that already exist and are identical (MD5 hash comparison)
-   - Provides clear feedback on copied vs skipped files
-   - Saves time and storage space for repeated setup runs
-4. **Cache Management**: Sets up Apptainer/Singularity cache structure
-   - Creates cache subdirectories: `call_cache/`, `download_cache/`, `singularity_cache/`, `tmp/`
-   - Supports custom cache locations (recommended for HPC environments)
-   - Updates miniwdl.cfg with correct cache paths
-5. **Configuration Management**: 
-   - Uses miniwdl.cfg from repository root by default
-   - Supports custom miniwdl.cfg paths
-   - Automatically updates cache paths in configuration
-6. **JSON Generation**: Creates new `family.hpc.inputs.json` with updated local file paths
-7. **Run Script Creation**: Generates `run_workflow.sh` designed to be executed from repository root to avoid miniwdl I/O issues
+The script automates workflow setup by:
+
+1. Pre-pulling container images to the Singularity/Apptainer cache
+2. Creating work directory with `inputs/`, `outputs/`, and `logs/` subdirectories
+3. Merging multiple HiFi BAM files per sample with `samtools cat` and stripping tags (fi, ri, fp, rp, ip, pw, HP, PS, PC) with `samtools reset`
+4. Copying reference map files to the inputs directory
+5. Setting up cache directories and updating miniwdl.cfg with cache paths
+6. Generating `family.hpc.inputs.json` with local file paths
+7. Creating `run_workflow.sh` script
+
+The script skips BAM processing if the output file exists and passes `samtools quickcheck`.
 
 ### Input Configuration File
 
@@ -171,17 +157,22 @@ ls -la outputs/
 
 ### Prerequisites
 
-1. **Conda Environment**: Ensure you have a conda environment with miniwdl installed
+1. **Conda Environment**: Ensure you have a conda environment with miniwdl and samtools installed
    ```bash
-   conda create -n hifi-wgs miniwdl
+   conda env create -f environment.yml
    conda activate hifi-wgs
    ```
 
 2. **Container Runtime**: Singularity/Apptainer must be available on your system
 
-3. **Input Files**: Ensure all file paths in your input configuration JSON are accessible
+3. **Samtools**: Required for BAM merging and tag stripping (included in conda environment)
 
-4. **Reference Data**: Download the reference bundle from Zenodo if using local paths
+4. **Input Files**: Ensure all file paths in your input configuration JSON are accessible
+
+5. **Reference Data**: Download the reference bundle from Zenodo if using local paths
+   ```bash
+   ./scripts/setup.sh
+   ```
 
 ### Advanced Usage Examples
 
