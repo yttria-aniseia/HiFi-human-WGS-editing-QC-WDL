@@ -254,41 +254,9 @@ echo "=== Phase 2: Input Processing ==="
 cp "$REPO_ROOT/scripts/process_input_config.py" "$WORK_DIR/process_input_config.py"
 chmod +x "$WORK_DIR/process_input_config.py"
 
-# Create SLURM job script for input processing
-cat > "$WORK_DIR/submit_input_processing.sh" << EOF
-#!/bin/bash
-#SBATCH --job-name=launch_input_processing
-#SBATCH --output=$WORK_DIR/logs/input_processing_%j.log
-#SBATCH --error=$WORK_DIR/logs/input_processing_%j.log
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=16G
-#SBATCH --time=4:00:00
-
-set -euo pipefail
-
-echo "=== Input Processing Job ==="
-echo "Job ID: \$SLURM_JOB_ID"
-echo "Start time: \$(date)"
-echo "Working directory: $WORK_DIR"
-echo ""
-
-cd "$WORK_DIR"
-python3 process_input_config.py "$INPUT_CONFIG_JSON"
-
-echo ""
-echo "Input processing complete at: \$(date)"
-EOF
-
-chmod +x "$WORK_DIR/submit_input_processing.sh"
-
 # Submit the SLURM job
 echo "Submitting input processing job..."
-INPUT_JOB_ID=$(sbatch --parsable "$WORK_DIR/submit_input_processing.sh")
-echo "Input processing job submitted: Job ID $INPUT_JOB_ID"
-echo "Log file: $WORK_DIR/logs/input_processing_${INPUT_JOB_ID}.log"
-echo ""
-echo "Waiting for input processing to complete..."
-srun --dependency=afterok:$INPUT_JOB_ID --time=0:01:00 echo "Input processing job completed."
+srun -u --cpus-per-task=16 --mem=16G --time=4:00:00 python3 process_input_config.py "$INPUT_CONFIG_JSON"
 
 echo ""
 echo "Phase 2 input processing complete."
