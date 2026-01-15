@@ -56,7 +56,7 @@ For multiple edits in one sample, the edit JSON can contain multiple entries:
 4. Run the workflow:
 
 ```bash
-./scripts/launch.sh your_config.json analysis_name
+./scripts/launch.sh your_config.json --work-dir analysis_name
 ```
 
 ## See Also

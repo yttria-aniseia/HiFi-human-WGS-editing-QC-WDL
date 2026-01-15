@@ -13,42 +13,59 @@ The `launch.sh` script automates the entire setup process for running the HiFi h
 ./scripts/launch.sh your_input_config.json
 
 # Custom workflow directory name
-./scripts/launch.sh your_input_config.json my_analysis_name
+./scripts/launch.sh your_input_config.json --work-dir my_analysis_name
 
 # With custom cache locations (recommended for HPC)
-./scripts/launch.sh your_input_config.json my_analysis /scratch/user/cache /scratch/user/tmp
+./scripts/launch.sh your_input_config.json --work-dir my_analysis --cache-dir /scratch/user/cache --tmp-dir /scratch/user/tmp
 
 # With custom miniwdl.cfg
-./scripts/launch.sh your_input_config.json my_analysis "" "" /path/to/custom/miniwdl.cfg
+./scripts/launch.sh your_input_config.json --work-dir my_analysis --miniwdl-cfg /path/to/custom/miniwdl.cfg
+
+# Auto-start workflow after setup
+./scripts/launch.sh your_input_config.json --work-dir my_analysis --run
 
 # Full customization
-./scripts/launch.sh your_input_config.json my_analysis /scratch/cache /scratch/tmp /custom/miniwdl.cfg
+./scripts/launch.sh your_input_config.json --work-dir my_analysis --cache-dir /scratch/cache --tmp-dir /scratch/tmp --miniwdl-cfg /custom/miniwdl.cfg --run
 ```
 
 ### Usage
 
 ```bash
-./scripts/launch.sh <input_config_json> [work_dir_name] [cache_dir] [tmp_dir] [miniwdl_cfg]
+./scripts/launch.sh <input_config_json> [options]
 ```
 
-**Arguments:**
+**Required Arguments:**
 - `input_config_json`: JSON configuration file with sample information and file paths
-- `work_dir_name`: Optional name for the working directory (default: `workflow_run_YYYYMMDD_HHMMSS`)
-- `cache_dir`: Optional Apptainer cache directory (default: `<work_dir>/miniwdl_cache`)
-- `tmp_dir`: Optional Apptainer temp directory (default: `<work_dir>/miniwdl_tmp`)
-- `miniwdl_cfg`: Optional path to custom miniwdl.cfg (default: `<repo_root>/miniwdl.cfg`)
+
+**Options:**
+- `--work-dir <path>`: Working directory path (default: `workflow_run_YYYYMMDD_HHMMSS`)
+- `--cache-dir <path>`: Apptainer cache directory (default: `<work_dir>/miniwdl_cache`)
+- `--tmp-dir <path>`: Apptainer temp directory (default: `<work_dir>/miniwdl_tmp`)
+- `--miniwdl-cfg <path>`: Path to custom miniwdl.cfg (default: `<repo_root>/miniwdl.cfg`)
+- `--run`: Automatically start workflow execution after setup
+- `--help`: Show help message
 
 ### What the Script Does
 
-The script automates workflow setup by:
+The script automates workflow setup in three phases:
 
-1. Pre-pulling container images to the Singularity/Apptainer cache
-2. Creating work directory with `inputs/`, `outputs/`, and `logs/` subdirectories
-3. Merging multiple HiFi BAM files per sample with `samtools cat` and stripping tags (fi, ri, fp, rp, ip, pw, HP, PS, PC) with `samtools reset`
-4. Copying reference map files to the inputs directory
-5. Setting up cache directories and updating miniwdl.cfg with cache paths
-6. Generating `family.hpc.inputs.json` with local file paths
-7. Creating `run_workflow.sh` script
+**Phase 1: Setup (runs in current shell)**
+1. Parse arguments and validate inputs
+2. Create cache directories and export Apptainer environment variables
+3. Pre-pull container images to the Singularity/Apptainer cache
+4. Create work directory with `inputs/`, `outputs/`, and `logs/` subdirectories
+5. Copy and update miniwdl.cfg with cache paths
+
+**Phase 2: Input Processing (runs in SLURM job - 8 CPUs, 16GB, 4 hours)**
+1. Merge multiple HiFi BAM files per sample using `samtools cat`
+2. Strip phasing tags (fi, ri, fp, rp, ip, pw, HP, PS, PC) using `samtools reset`
+3. Copy reference map files (ref_map, somatic_map, tertiary_map) to inputs directory
+4. Copy expected_edits JSON file to inputs directory
+5. Generate `family.hpc.inputs.json` with local file paths
+
+**Phase 3: Workflow Execution (optional, if --run flag provided)**
+1. Start miniwdl workflow automatically
+2. Or create `run_workflow.sh` script for manual execution
 
 The script skips BAM processing if the output file exists and passes `samtools quickcheck`.
 
@@ -102,19 +119,19 @@ Create a JSON file similar to the existing `backends/hpc/family.hpc.inputs.v2.js
 
 **Simple descriptive name:**
 ```bash
-./scripts/launch.sh config.json trio_analysis
+./scripts/launch.sh config.json --work-dir trio_analysis
 # Creates: ./trio_analysis
 ```
 
 **Project-specific naming:**
 ```bash
-./scripts/launch.sh config.json KOLF2_family_Dec2024
+./scripts/launch.sh config.json --work-dir KOLF2_family_Dec2024
 # Creates: ./KOLF2_family_Dec2024
 ```
 
 **Full path specification:**
 ```bash
-./scripts/launch.sh config.json /scratch/user/my_project/analysis1
+./scripts/launch.sh config.json --work-dir /scratch/user/my_project/analysis1
 # Creates: /scratch/user/my_project/analysis1
 ```
 
@@ -176,23 +193,29 @@ ls -la outputs/
 
 ### Advanced Usage Examples
 
-**Multiple cache locations:**
+**Shared cache directory for multiple runs:**
 ```bash
-# Use different locations for cache and temp
-./scripts/launch.sh config.json analysis /fast/cache /local/tmp
+# Use shared cache to avoid re-downloading containers across runs
+./scripts/launch.sh config.json --work-dir analysis --cache-dir /scratch/shared/container_cache --tmp-dir /scratch/user/tmp
 ```
 
 **Custom miniwdl configuration:**
 ```bash
 # Use your own miniwdl.cfg with specific cluster settings
-./scripts/launch.sh config.json analysis "" "" /path/to/my/custom.cfg
+./scripts/launch.sh config.json --work-dir analysis --miniwdl-cfg /path/to/my/custom.cfg
+```
+
+**Auto-start workflow after setup:**
+```bash
+# Setup and immediately start workflow execution
+./scripts/launch.sh config.json --work-dir analysis --run
 ```
 
 **Re-running with same data:**
 ```bash
-# Second run skips file copying (files are identical)
-./scripts/launch.sh same_config.json analysis_v2
-# Output: "Skipping file.bam -> inputs/file.bam (already exists and identical)"
+# Second run skips file copying (files pass samtools quickcheck)
+./scripts/launch.sh same_config.json --work-dir analysis_v2
+# Output: "Skipping merge for sample1 -> inputs/sample1_hifi_reads_merged.bam (already exists)"
 ```
 
 ### Troubleshooting
@@ -233,27 +256,27 @@ conda create -n hifi-wgs miniwdl
 
 ### Cache Directory Configuration
 
-The script supports flexible cache directory configuration, which is especially important for HPC environments:
+The script supports flexible cache directory configuration for reusing container images across runs:
 
-**Default (local cache):**
+**Default (per-run cache):**
 ```bash
-./scripts/launch.sh config.json my_analysis
+./scripts/launch.sh config.json --work-dir my_analysis
 # Creates cache at: my_analysis/miniwdl_cache/
 ```
 
-**Custom cache location (recommended for HPC):**
+**Shared cache location (recommended for multiple runs):**
 ```bash
-./scripts/launch.sh config.json my_analysis /scratch/user/cache /scratch/user/tmp
-# Uses high-performance storage for cache operations
+./scripts/launch.sh config.json --work-dir my_analysis --cache-dir /scratch/shared/containers --tmp-dir /scratch/user/tmp
+# Reuses container images across different workflow runs
 ```
 
 **Cache Structure Created:**
 ```
 cache_location/
-├── call_cache/           # miniwdl call caching
-├── cromwell_db/          # Cromwell database  
+├── call_cache/           # miniwdl call caching (workflow execution)
+├── cromwell_db/          # Cromwell database
 ├── download_cache/       # Apptainer image downloads (APPTAINER_CACHEDIR)
-├── singularity_cache/    # Singularity/Apptainer images
+├── singularity_cache/    # Singularity/Apptainer images (reused across runs)
 └── tmp/                  # Apptainer temp operations (APPTAINER_TMP_DIR)
 ```
 
@@ -281,8 +304,8 @@ Copying /data/ref_map.tsv -> inputs/ref_map_file.tsv
 cp example_input_config.json my_trio_config.json
 # Edit my_trio_config.json with your file paths
 
-# 2. Launch the workflow setup with custom cache location
-./scripts/launch.sh my_trio_config.json trio_analysis_2024 /scratch/user/cache
+# 2. Launch the workflow setup with shared cache location
+./scripts/launch.sh my_trio_config.json --work-dir trio_analysis_2024 --cache-dir /scratch/shared/containers
 
 # 3. Run the workflow from repository root
 conda activate hifi-wgs

@@ -49,9 +49,15 @@ See [family.md](./family.md) for input structure details, or [biohub-setup.md](.
 The automated launcher script handles file staging and setup:
 
 ```bash
-./scripts/launch.sh my_inputs.json my_analysis_name
+./scripts/launch.sh my_inputs.json --work-dir my_analysis_name
 conda activate hifi-wgs
 bash my_analysis_name/run_workflow.sh
+```
+
+Or run everything at once:
+
+```bash
+./scripts/launch.sh my_inputs.json --work-dir my_analysis_name --run
 ```
 
 See [scripts/README.md](../scripts/README.md) for details.

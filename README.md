@@ -81,7 +81,7 @@ See the backend-specific documentation for details on setting up an engine.
 
 ### Filling out the inputs JSON
 
-The input to a workflow run is defined in JSON format. Use [example_input_config.json](example_input_config.json) as a template.
+The input to a workflow run is defined in JSON format. Use [example_input_config.json](example_inputs/example_input_config.json) as a template.
 
 Key steps:
 1. Define your samples with their HiFi read BAM files
@@ -98,10 +98,11 @@ See [docs/biohub-setup.md](docs/biohub-setup.md) for detailed instructions.
 **Recommended approach** using the automated launcher script:
 
 ```bash
-# 1. Setup and stage inputs
-./scripts/launch.sh my_input_config.json my_analysis_name
+# 1. Setup and stage inputs (with automatic workflow execution)
+./scripts/launch.sh my_input_config.json --work-dir my_analysis_name --run
 
-# 2. Run the workflow (from repository root)
+# Or setup only, run workflow manually later
+./scripts/launch.sh my_input_config.json --work-dir my_analysis_name
 conda activate hifi-wgs
 bash my_analysis_name/run_workflow.sh
 ```
@@ -166,7 +167,7 @@ At a high level, we have two types of input files:
 }
 ```
 
-See [example_expected_edit.json](example_expected_edit.json) for the expected edit file format, or use the provided `genbank_to_crispr_json.py` helper script to generate edit descriptions from GenBank files.
+See [example_expected_edit.json](example_inputs/example_expected_edit.json) for the expected edit file format, or use the provided `genbank_to_crispr_json.py` helper script to generate edit descriptions from GenBank files.
 
 The resource bundle containing the GRCh38 reference and other files used in this workflow can be downloaded from Zenodo:
 

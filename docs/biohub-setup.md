@@ -99,7 +99,7 @@ For non-standard ploidy expectations, set `sawfish_expected_bed_male` and/or `sa
 ### Using launch.sh (recommended)
 
 ```bash
-./scripts/launch.sh my_inputs.json my_analysis_name
+./scripts/launch.sh my_inputs.json --work-dir my_analysis_name
 ```
 
 This stages inputs, merges BAM files, strips tags, and creates a run script. Then:
@@ -107,6 +107,12 @@ This stages inputs, merges BAM files, strips tags, and creates a run script. The
 ```bash
 conda activate hifi-wgs
 bash my_analysis_name/run_workflow.sh
+```
+
+Or run everything at once with `--run` flag:
+
+```bash
+./scripts/launch.sh my_inputs.json --work-dir my_analysis_name --run
 ```
 
 The workflow runs for ~24 hours depending on sample count and relatedness.
@@ -149,10 +155,10 @@ Move completed analysis to archive storage:
 
 **Environment issues**: Verify conda environment installation and that miniwdl is available.
 
-**Container cache issues**: The prepull phase uses the home directory cache by default due to a bug. Specify custom cache locations to avoid quota issues:
+**Container cache issues**: Use a shared cache directory to reuse containers across runs:
 
 ```bash
-./scripts/launch.sh my_inputs.json my_analysis /scratch/cache /scratch/tmp
+./scripts/launch.sh my_inputs.json --work-dir my_analysis --cache-dir /scratch/shared/containers
 ```
 
 **BAM merging failures**: Check that samtools is installed and input BAM files are accessible.
