@@ -141,7 +141,7 @@ task annotsv {
     }
 
     runtime {
-        docker: "quay.io/biocontainers/annotsv@sha256:d814365a1d81bca2b4690a6a8af316881587cadb38b3bb524ec8747380bc7a36"
+        docker: "quay.io/biocontainers/annotsv@sha256:0c73fef5fa529b11e10bea0355480f01b56d0feb21af54cb9bbbd1f9f4c862a7"
         cpu: threads
         memory: "~{threads * 2} GB"
         disk: file_size + " GB"

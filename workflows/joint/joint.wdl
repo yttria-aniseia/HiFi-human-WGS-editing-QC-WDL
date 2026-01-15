@@ -1,7 +1,8 @@
 version 1.0
 
 import "../wdl-common/wdl/structs.wdl"
-import "../wdl-common/wdl/tasks/glnexus.wdl" as Glnexus
+#import "../wdl-common/wdl/tasks/glnexus.wdl" as Glnexus
+import "../edit-qc/glnexus.wdl" as Glnexus_aux
 import "../wdl-common/wdl/tasks/sawfish.wdl" as Sawfish
 import "../wdl-common/wdl/tasks/bcftools.wdl" as Bcftools
 
@@ -123,7 +124,7 @@ workflow joint {
       runtime_attributes    = default_runtime_attributes
   }
 
-  call Glnexus.glnexus {
+  call Glnexus_aux.glnexus {
     input:
       cohort_id          = family_id + ".joint",
       gvcfs              = gvcfs,
