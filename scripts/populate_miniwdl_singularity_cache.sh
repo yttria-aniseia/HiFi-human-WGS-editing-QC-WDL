@@ -4,7 +4,6 @@ set -eo pipefail
 USAGE="Given a manifest file with docker images, this script populates the Singularity cache with those images.
 Usage: $0 <image_manifest_file> <miniwdl_singularity_cache_dir>"
 
-
 # Check if the first argument is -h or --help
 if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
   echo -e "${USAGE}"
