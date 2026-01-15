@@ -1,5 +1,7 @@
 # PacBio Human WGS Variant Pipeline on DNAnexus
 
+> **⚠️ Note**: This fork is primarily tested on HPC environments. Cloud backend support is inherited from the upstream PacBio pipeline but not actively maintained or tested for CRISPR editing workflows. Use at your own risk.
+
 The PacBio Human WGS Variant Pipeline is an analysis workflow for PacBio HiFi human whole genome sequencing data, with joint calling for related samples.
 
 Templates and instructions for how to submit the `Family struct` input on the DNAnexus platform are provided in the [Example JSON Documents](#example-json-documents) and [Submitting to DNAnexus](#submitting-to-dnanexus) sections below.

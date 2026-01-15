@@ -1,6 +1,8 @@
 # Tool versions and Containers
 
-Containers are used to package tools and their dependencies. This ensures that the tools are reproducible and can be run on any system that supports the container runtime.  Our containers are built using [Docker](https://www.docker.com/) and are compatible with any container runtime that supports the OCI Image Specification, like [Singularity](https://sylabs.io/singularity/) or [Podman](https://podman.io/).
+> **Note**: This fork adds additional containers for CRISPR editing QC and somatic variant analysis. Core pipeline containers are inherited from the upstream PacBio pipeline.
+
+Containers are used to package tools and their dependencies. This ensures that the tools are reproducible and can be run on any system that supports the container runtime. Our containers are built using [Docker](https://www.docker.com/) and are compatible with any container runtime that supports the OCI Image Specification, like [Singularity](https://sylabs.io/singularity/) or [Podman](https://podman.io/).
 
 Most of our containers are built on the `pb_wdl_base` container, which includes common bioinformatics tools and libraries.  We tag our containers with a version number and build count, but the containers are referenced within the WDL files by the sha256 sum tags for reproducibility and better compatibility with Cromwell and miniwdl call caching.
 
@@ -28,3 +30,26 @@ We directly use `deepvariant`, `deepvariant-gpu`, `pharmcat`, and `glnexus` cont
 | deepvariant-gpu | <ul><li>DeepVariant 1.9.0</li></ul> |  | [deepvariant:1.9.0-gpu](https://hub.docker.com/layers/google/deepvariant/1.9.0-gpu/images/sha256-e0c8734b8700d945e3ee78d609acb90548f829c874596ffca436af8cf379f87a) |
 | pharmcat | <ul><li>PharmCat 2.15.4</li></ul> |  | [pharmcat:2.15.4](https://hub.docker.com/layers/pgkb/pharmcat/2.15.4/images/sha256-5b58ae959b4cd85986546c2d67e3596f33097dedc40dfe57dd845b6e78781eb6) |
 | glnexus | <ul><li>GLnexus 1.4.3</li></ul> |  | [glnexus:1.4.3](https://quay.io/repository/pacbio/glnexus/manifest/sha256:ce6fecf59dddc6089a8100b31c29c1e6ed50a0cf123da9f2bc589ee4b0c69c8e) |
+
+## Additional Containers for CRISPR Editing QC
+
+This fork adds specialized tools for CRISPR editing validation and somatic variant analysis:
+
+| Container | Major tool versions | Container |
+| --------: | ------------------- | :---: |
+| bcftools (biocontainers) | <ul><li>bcftools (alternate version)</li></ul> | [bcftools@sha256:065115d2fbdcba9b9a9d360fe9f024ba829de2e64309a637a274ed47e0af17db](https://quay.io/repository/biocontainers/bcftools) |
+| truvari | <ul><li>truvari (parent filtering)</li></ul> | [truvari@sha256:022be7a2dfe5decf1aff8d007a914f56ed68d0bc224888e1764820922bc11935](https://quay.io/repository/biocontainers/truvari) |
+| minimap2 | <ul><li>minimap2 (edit alignment)</li></ul> | [minimap2@sha256:fdc9ef8bfbd31bab59a61b2e90dd226647deed971556175a4cd004f0bcdc7608](https://quay.io/repository/biocontainers/minimap2) |
+| guidescan | <ul><li>guidescan (off-target detection)</li></ul> | [guidescan@sha256:9d93021243780b1faff47f1df4c1ae495177ff65ccc8273f0ec590caad5c82f0](https://quay.io/repository/biocontainers/guidescan) |
+| cnvpytor | <ul><li>CNVpytor (CNV plotting)</li></ul> | [cnvpytor@sha256:42e480d51b4c640ebb46ede4ded05486c9974c0d0bde3a3cef9884ad56674383](https://quay.io/repository/biocontainers/cnvpytor) |
+| pybigwig | <ul><li>pyBigWig 0.3.24</li></ul> | [pybigwig:0.3.24](https://quay.io/repository/biocontainers/pybigwig) |
+
+## Additional Containers for Somatic Variant Analysis
+
+| Container | Major tool versions | Container |
+| --------: | ------------------- | :---: |
+| ensembl-vep | <ul><li>VEP (variant annotation)</li></ul> | [ensembl-vep@sha256:e7612ab7c2923f2b9a78592b939e74874cd29f7494d70ee7135c8303841b03a8](https://hub.docker.com/r/ensemblorg/ensembl-vep) |
+| annotsv | <ul><li>AnnotSV (SV annotation)</li></ul> | [annotsv@sha256:0c73fef5fa529b11e10bea0355480f01b56d0feb21af54cb9bbbd1f9f4c862a7](https://quay.io/repository/biocontainers/annotsv) |
+| severus | <ul><li>Severus (phased SV calling)</li></ul> | [severus@sha256:fb4471e0504d564de78215ae15c081a1bb2022ad51e993eba92bc6fa5052a05d](https://quay.io/repository/biocontainers/severus) |
+| somatic_general_tools | <ul><li>Somatic analysis utilities</li></ul> | [somatic_general_tools@sha256:a25a2e62b88c73fa3c18a0297654420a4675224eb0cf39fa4192f8a1e92b30d6](https://quay.io/repository/pacbio/somatic_general_tools) |
+| chord | <ul><li>CHORD (HRD prediction)</li></ul> | [chord@sha256:9f6aa44ffefe3f736e66a0e2d7941d4f3e1cc6d848a9a11a17e85a6525e63a77](https://hub.docker.com/r/scwatts/chord) |
