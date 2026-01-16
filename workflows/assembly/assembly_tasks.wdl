@@ -165,7 +165,6 @@ task pav {
     File input_fa_1       # haplotype 1 assembly
     File input_fa_2       # haplotype 2 assembly
     String sample_name
-    String pav_sif_path = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/miniwdl_cache/singularity_cache/pav_latest.sif/pav_latest.sif"  # Pre-downloaded container
     Boolean no_temp_cleanup = true
     RuntimeAttributes runtime_attributes
   }
@@ -220,7 +219,7 @@ task pav {
     cd "${OUTPUT_DIR}"
 
     # --nt parameter prevents the .fai read error common in pav 2.x.x, allegedly will be fixed in pav 3
-    snakemake -s /opt/pav/Snakefile --nt ${CLEAN_NAME}.vcf.gz --quiet host reason rules
+    snakemake -s /opt/pav/Snakefile --nt ${CLEAN_NAME}.vcf.gz --quiet host rules
   >>>
 
   output {
@@ -229,7 +228,7 @@ task pav {
   }
 
   runtime {
-    docker: "becklab/pav"
+    docker: "becklab/pav@sha256:7545e2ebcd89ef0724362eda107c19c6d17c1e100b57371c62ddc6f670ccded3"
     cpu: threads
     memory: mem_gb + " GB"
     disk: disk_size + " GB"

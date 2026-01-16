@@ -26,8 +26,6 @@ workflow assembly {
 
     Map[String, String] ref_map
 
-    String pav_sif_path = "/hpc/scratch/group.data.science/ram_temp/HiFi-human-WGS-editing-QC-WDL/miniwdl_cache/singularity_cache/pav_latest.sif"
-
     RuntimeAttributes default_runtime_attributes
   }
 
@@ -65,7 +63,6 @@ workflow assembly {
       input_fa_1     = gfa_to_fa.fasta_hap1,
       input_fa_2     = gfa_to_fa.fasta_hap2,
       sample_name    = sample_id,
-      pav_sif_path   = pav_sif_path,
       runtime_attributes = default_runtime_attributes
   }
   if (defined(pav.pav_vcf)) {
