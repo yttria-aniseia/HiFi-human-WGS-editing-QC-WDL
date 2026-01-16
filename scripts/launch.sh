@@ -303,7 +303,7 @@ miniwdl run \\
     --dir $WORK_DIR/outputs \\
     workflows/family.wdl \\
     -i $WORK_DIR/family.hpc.inputs.json \\
-    --verbose 2>&1 | tee $WORK_DIR/logs/workflow_\$(date +%Y%m%d_%H%M%S).log
+    --verbose
 
 echo ""
 echo "Workflow completed at: \$(date)"
