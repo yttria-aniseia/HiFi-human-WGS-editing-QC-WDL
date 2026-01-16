@@ -154,11 +154,10 @@ workflow humanwgs_family {
         sex                           = sample.sex,
         hifi_reads                    = sample.hifi_reads,
         fail_reads                    = sample.fail_reads,
+        fail_reads_bed             = process_trgt_catalog.include_fail_reads_bed,
+        fail_reads_bait_fasta      = process_trgt_catalog.fail_reads_bait_fasta,
+        fail_reads_bait_index      = process_trgt_catalog.fail_reads_bait_index,
         ref_map_file                  = ref_map_file,
-        trgt_catalog                  = process_trgt_catalog.full_catalog,
-        fail_reads_bed                = process_trgt_catalog.include_fail_reads_bed,
-        fail_reads_bait_fasta         = process_trgt_catalog.fail_reads_bait_fasta,
-        fail_reads_bait_index         = process_trgt_catalog.fail_reads_bait_index,
         max_reads_per_alignment_chunk = max_reads_per_alignment_chunk,
         single_sample                 = single_sample,
         gpu                           = gpu,
@@ -223,8 +222,8 @@ workflow humanwgs_family {
     call PlotCNV.cnvpytor_plot {
       input:
         sample_id = sample.sample_id,
-        aligned_bam = upstream.out_bam,
-        aligned_bam_index = upstream.out_bam_index,
+        aligned_bam = upstream.aligned_hifi_reads,
+        aligned_bam_index = upstream.aligned_hifi_reads_index,
         runtime_attributes = default_runtime_attributes
     }
   }
@@ -241,8 +240,8 @@ workflow humanwgs_family {
         gvcfs                      = upstream.small_variant_gvcf,
         gvcf_indices               = upstream.small_variant_gvcf_index,
         discover_tars              = upstream.discover_tar,
-        aligned_bams               = upstream.out_bam,
-      aligned_bam_indices        = upstream.out_bam_index,
+        aligned_bams               = upstream.aligned_hifi_reads,
+        aligned_bam_indices        = upstream.aligned_hifi_reads_index,
         ref_map_file               = ref_map_file,
         glnexus_mem_gb             = glnexus_mem_gb,
         default_runtime_attributes = default_runtime_attributes
@@ -265,15 +264,16 @@ workflow humanwgs_family {
     call Downstream.downstream {
       input:
         sample_id                  = sample_id[sample_index],
+        sex                        = upstream.inferred_sex[sample_index],
+        aligned_hifi_reads         = upstream.aligned_hifi_reads[sample_index],
+        aligned_hifi_reads_index   = upstream.aligned_hifi_reads_index[sample_index],
+        aligned_fail_reads         = upstream.aligned_fail_reads[sample_index],
+        aligned_fail_reads_index   = upstream.aligned_fail_reads_index[sample_index],
+        trgt_catalog               = process_trgt_catalog.full_catalog,
         small_variant_vcf          = select_first([joint.split_joint_small_variant_vcfs, upstream.small_variant_vcf])[sample_index],
         small_variant_vcf_index    = select_first([joint.split_joint_small_variant_vcf_indices, upstream.small_variant_vcf_index])[sample_index],
         sv_vcf                     = merge_sv_vcfs_align_assembly.merged_vcf[sample_index],
         sv_vcf_index               = merge_sv_vcfs_align_assembly.merged_vcf_index[sample_index],
-        trgt_vcf                   = upstream.trgt_vcf[sample_index],
-        trgt_vcf_index             = upstream.trgt_vcf_index[sample_index],
-        trgt_catalog               = process_trgt_catalog.full_catalog,
-        aligned_bam                = upstream.out_bam[sample_index],
-        aligned_bam_index          = upstream.out_bam_index[sample_index],
         pharmcat_min_coverage      = pharmcat_min_coverage,
         ref_map_file               = ref_map_file,
         default_runtime_attributes = default_runtime_attributes
@@ -283,7 +283,6 @@ workflow humanwgs_family {
     #############################################################
     #       MERGING SVs and small variants ACROSS SAMPLES       #
     #############################################################
-
 
 
     if (!single_sample) {
@@ -305,8 +304,8 @@ workflow humanwgs_family {
 
         call Trgt.trgt_merge {
           input:
-            vcfs               = downstream.phased_trgt_vcf,
-            vcf_indices        = downstream.phased_trgt_vcf_index,
+            vcfs               = downstream.trgt_vcf,
+            vcf_indices        = downstream.trgt_vcf_index,
             ref_fasta          = ref_map["fasta"],                              # !FileCoercion
             ref_index          = ref_map["fasta_index"],                        # !FileCoercion
             out_prefix         = "~{family.family_id}.merged.~{ref_map['name']}.trgt",
@@ -613,8 +612,8 @@ workflow humanwgs_family {
       flatten([['sv_INV_count'], downstream.stat_sv_INV_count]),
       flatten([['sv_SWAP_count'], downstream.stat_sv_SWAP_count]),
       flatten([['sv_BND_count'], downstream.stat_sv_BND_count]),
-      flatten([['trgt_genotyped_count'], upstream.stat_trgt_genotyped_count]),
-      flatten([['trgt_uncalled_count'], upstream.stat_trgt_uncalled_count])
+      flatten([['trgt_genotyped_count'], downstream.stat_trgt_genotyped_count]),
+      flatten([['trgt_uncalled_count'], downstream.stat_trgt_uncalled_count])
   ]
 
   call Utilities.consolidate_stats {
@@ -730,13 +729,13 @@ workflow humanwgs_family {
     Array[File]   indel_distribution_plot         = downstream.indel_distribution_plot
 
     # trgt outputs
-    Array[File]   phased_trgt_vcf           = downstream.phased_trgt_vcf
-    Array[File]   phased_trgt_vcf_index     = downstream.phased_trgt_vcf_index
-    Array[File]   trgt_spanning_reads       = upstream.trgt_spanning_reads
-    Array[File]   trgt_spanning_reads_index = upstream.trgt_spanning_reads_index
+    Array[File]   phased_trgt_vcf           = downstream.trgt_vcf
+    Array[File]   phased_trgt_vcf_index     = downstream.trgt_vcf_index
+    Array[File]   trgt_spanning_reads       = downstream.trgt_spanning_reads
+    Array[File]   trgt_spanning_reads_index = downstream.trgt_spanning_reads_index
     Array[File]   trgt_coverage_dropouts    = downstream.trgt_coverage_dropouts
-    Array[String] stat_trgt_genotyped_count = upstream.stat_trgt_genotyped_count
-    Array[String] stat_trgt_uncalled_count  = upstream.stat_trgt_uncalled_count
+    Array[String] stat_trgt_genotyped_count = downstream.stat_trgt_genotyped_count
+    Array[String] stat_trgt_uncalled_count  = downstream.stat_trgt_uncalled_count
 
     # paraphase outputs
     Array[File?] paraphase_output_json         = upstream.paraphase_output_json
@@ -867,12 +866,13 @@ workflow humanwgs_family {
     Array[String] msg = flatten(
       [
         process_trgt_catalog.msg,
-        flatten(upstream.msg)
+        flatten(upstream.msg),
+        flatten(downstream.msg)
       ]
     )
 
     # workflow metadata
     String workflow_name    = "humanwgs_family"
-    String workflow_version = "v3.1.0" + if defined(debug_version) then "~{"-" + debug_version}" else ""
+    String workflow_version = "v3.2.0" + if defined(debug_version) then "~{"-" + debug_version}" else ""
   }
 }

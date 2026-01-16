@@ -6,7 +6,6 @@ import "../wdl-common/wdl/tasks/sawfish.wdl" as Sawfish
 import "../wdl-common/wdl/workflows/deepvariant/deepvariant.wdl" as DeepVariant
 import "../wdl-common/wdl/tasks/samtools.wdl" as Samtools
 import "../wdl-common/wdl/tasks/mosdepth.wdl" as Mosdepth
-import "../wdl-common/wdl/tasks/trgt.wdl" as Trgt
 import "../wdl-common/wdl/tasks/paraphase.wdl" as Paraphase
 import "../edit-qc/samtools_aux.wdl" as Samtools_aux
 import "../edit-qc/mosdepth_himem.wdl" as Mosdepth_himem
@@ -32,15 +31,6 @@ workflow upstream {
     fail_reads: {
       name: "Failed reads (BAMs)"
     }
-    ref_map_file: {
-      name: "TSV containing reference genome information"
-    }
-    max_reads_per_alignment_chunk: {
-      name: "Maximum reads per alignment chunk"
-    }
-    trgt_catalog: {
-      name: "Repeat catalog for TRGT; BED"
-    }
     fail_reads_bed: {
       name: "Subset of genome for which to include fail reads; BED"
     }
@@ -49,6 +39,12 @@ workflow upstream {
     }
     fail_reads_bait_index: {
       name: "Index of reference sequences for baiting fail reads; FASTA index"
+    }
+    ref_map_file: {
+      name: "TSV containing reference genome information"
+    }
+    max_reads_per_alignment_chunk: {
+      name: "Maximum reads per alignment chunk"
     }
     single_sample: {
       name: "Single sample workflow"
@@ -67,14 +63,13 @@ workflow upstream {
     Array[File] hifi_reads
     Array[File]? fail_reads
 
-    File ref_map_file
-
-    Int max_reads_per_alignment_chunk
-
-    File trgt_catalog
     File? fail_reads_bed
     File? fail_reads_bait_fasta
     File? fail_reads_bait_index
+
+    File ref_map_file
+
+    Int max_reads_per_alignment_chunk
 
     Boolean single_sample = false
 
@@ -84,28 +79,6 @@ workflow upstream {
   }
 
   Map[String, String] ref_map = read_map(ref_map_file)
-
-  scatter (hifi_read_bam in hifi_reads) {
-    call Pbmm2.pbmm2 as pbmm2 {
-      input:
-        sample_id                  = sample_id,
-        bam                        = hifi_read_bam,
-        max_reads_per_chunk        = max_reads_per_alignment_chunk,
-        ref_fasta                  = ref_map["fasta"],              # !FileCoercion
-        ref_index                  = ref_map["fasta_index"],        # !FileCoercion
-        ref_name                   = ref_map["name"],
-        default_runtime_attributes = default_runtime_attributes
-    }
-    # call Pbmm2.pbmm2_align_wgs as pbmm2_align_hg002 {
-    #   input:
-    #     sample_id          = sample_id,
-    #     bam                = hifi_read_bam,
-    #     ref_fasta          = ref_map["hg002_fasta"],       # !FileCoercion
-    #     ref_index          = ref_map["hg002_fasta_index"], # !FileCoercion
-    #     ref_name           = ref_map["hg002_name"],
-    #     runtime_attributes = default_runtime_attributes
-    # }
-  }
 
   if (
     defined(fail_reads) && defined(fail_reads_bed) && defined(fail_reads_bait_fasta) && defined(fail_reads_bait_index)
@@ -144,14 +117,46 @@ workflow upstream {
           runtime_attributes = default_runtime_attributes
       }
     }
+
+    # merge aligned bams if there are multiple
+    if (length(subset_bam.bam) > 1) {
+      call Samtools.samtools_merge as merge_fail_reads {
+        input:
+          bams               = subset_bam.bam,
+          out_prefix         = "~{sample_id}.~{ref_map['name']}.fail_reads",
+          runtime_attributes = default_runtime_attributes
+      }
+    }
+
+    # select the merged bam if it exists, otherwise select the first (only) aligned bam
+    File aligned_fail_bam_data  = select_first([merge_fail_reads.merged_bam, subset_bam.bam[0]])
+    File aligned_fail_bam_index = select_first([merge_fail_reads.merged_bam_index, subset_bam.bam[0]])
+  }
+
+  String include_fail_reads = 
+    if (defined(aligned_fail_bam_data)) 
+    then "Including fail_reads for TRGT genotyping for regions specified in the TRGT catalog."
+    else ""
+
+  scatter (hifi_read_bam in hifi_reads) {
+    call Pbmm2.pbmm2 as pbmm2 {
+      input:
+        sample_id                  = sample_id,
+        bam                        = hifi_read_bam,
+        max_reads_per_chunk        = max_reads_per_alignment_chunk,
+        ref_fasta                  = ref_map["fasta"],              # !FileCoercion
+        ref_index                  = ref_map["fasta_index"],        # !FileCoercion
+        ref_name                   = ref_map["name"],
+        default_runtime_attributes = default_runtime_attributes
+    }
   }
 
   # merge aligned bams if there are multiple
   if (length(flatten(pbmm2.aligned_bams)) > 1) {
-    call Samtools.samtools_merge as merge_hifi_bams {
+    call Samtools.samtools_merge as merge_hifi_reads {
       input:
         bams               = flatten(pbmm2.aligned_bams),
-        out_prefix         = "~{sample_id}.~{ref_map['name']}",
+        out_prefix         = "~{sample_id}.~{ref_map['name']}.hifi_reads",
         runtime_attributes = default_runtime_attributes
     }
     # call Samtools.samtools_merge as samtools_merge_hg002 {
@@ -163,8 +168,8 @@ workflow upstream {
   }
 
   # select the merged bam if it exists, otherwise select the first (only) aligned bam
-  File aligned_bam_data  = select_first([merge_hifi_bams.merged_bam, flatten(pbmm2.aligned_bams)[0]])
-  File aligned_bam_index = select_first([merge_hifi_bams.merged_bam_index, flatten(pbmm2.aligned_bam_indices)[0]])
+  File aligned_bam_data  = select_first([merge_hifi_reads.merged_bam, flatten(pbmm2.aligned_bams)[0]])
+  File aligned_bam_index = select_first([merge_hifi_reads.merged_bam_index, flatten(pbmm2.aligned_bam_indices)[0]])
 
   # File aligned_bam_data_hg002  = select_first([samtools_merge_hg002.merged_bam, pbmm2_align_hg002.aligned_bam[0]])
   # File aligned_bam_index_hg002 = select_first([samtools_merge_hg002.merged_bam_index, pbmm2_align_hg002.aligned_bam_index[0]])
@@ -198,8 +203,8 @@ workflow upstream {
   call DeepVariant.deepvariant {
     input:
       sample_id                  = sample_id,
-      aligned_bams               = [aligned_bam_data],
-      aligned_bam_indices        = [aligned_bam_index],
+      aligned_bams               = flatten(pbmm2.aligned_bams),
+      aligned_bam_indices        = flatten(pbmm2.aligned_bam_indices),
       ref_fasta                  = ref_map["fasta"],       # !FileCoercion
       ref_index                  = ref_map["fasta_index"], # !FileCoercion
       ref_name                   = ref_map["name"],
@@ -245,46 +250,29 @@ workflow upstream {
       runtime_attributes = default_runtime_attributes
   }
 
-  # if fail_reads were aligned, merge them with the aligned hifi bams for trgt
-  if (defined(subset_bam.bam)) {
-    call Samtools.samtools_merge as merge_hifi_fail_bams {
-      input:
-        bams               = flatten(select_all([flatten(pbmm2.aligned_bams), subset_bam.bam])),
-        out_prefix         = "~{sample_id}.~{ref_map['name']}",
-        runtime_attributes = default_runtime_attributes
-    }
-  }
-
-  String include_fail_reads = 
-    if (defined(subset_bam.bam) && defined(fail_reads_bed)) 
-    then "Including fail_reads for TRGT genotyping for regions specified in the TRGT catalog."
-    else ""
-
-  call Trgt.trgt {
-    input:
-      sample_id          = sample_id,
-      sex                = mosdepth.inferred_sex,
-      aligned_bam        = select_first([merge_hifi_fail_bams.merged_bam, aligned_bam_data]),
-      aligned_bam_index  = select_first([merge_hifi_fail_bams.merged_bam_index, aligned_bam_index]),
-      ref_fasta          = ref_map["fasta"],                  # !FileCoercion
-      ref_index          = ref_map["fasta_index"],            # !FileCoercion
-      trgt_bed           = trgt_catalog,
-      out_prefix         = "~{sample_id}.~{ref_map['name']}",
-      min_read_quality   = -1.0,
-      runtime_attributes = default_runtime_attributes
-  }
-
   if (single_sample) {
+    String copynum_bedgraph_name           = "~{sample_id}.~{ref_map['name']}.structural_variants.copynum.bedgraph"
+    String depth_bw_name                   = "~{sample_id}.~{ref_map['name']}.structural_variants.depth.bw"
+    String gc_bias_corrected_depth_bw_name = "~{sample_id}.~{ref_map['name']}.structural_variants.gc_bias_corrected_depth.bw"
+    String maf_bw_name                     = "~{sample_id}.~{ref_map['name']}.structural_variants.maf.bw"
+    String copynum_summary_name            = "~{sample_id}.~{ref_map['name']}.structural_variants.copynum.summary.json"
+
+
     call Sawfish.sawfish_call {
       input:
-        sample_ids          = [sample_id],
-        discover_tars       = [sawfish_discover.discover_tar],
-        aligned_bams        = [aligned_bam_data],
-        aligned_bam_indices = [aligned_bam_index],
-        ref_fasta           = ref_map["fasta"],                                      # !FileCoercion
-        ref_index           = ref_map["fasta_index"],                                # !FileCoercion
-        out_prefix          = "~{sample_id}.~{ref_map['name']}.structural_variants",
-        runtime_attributes  = default_runtime_attributes
+        sample_ids                       = [sample_id],
+        discover_tars                    = [sawfish_discover.discover_tar],
+        aligned_bams                     = [aligned_bam_data],
+        aligned_bam_indices              = [aligned_bam_index],
+        ref_fasta                        = ref_map["fasta"],                                      # !FileCoercion
+        ref_index                        = ref_map["fasta_index"],                                # !FileCoercion
+        out_prefix                       = "~{sample_id}.~{ref_map['name']}.structural_variants",
+        copynum_bedgraph_names           = [copynum_bedgraph_name],
+        depth_bw_names                   = [depth_bw_name],
+        gc_bias_corrected_depth_bw_names = [gc_bias_corrected_depth_bw_name],
+        maf_bw_names                     = [maf_bw_name],
+        copynum_summary_names            = [copynum_summary_name],
+        runtime_attributes               = default_runtime_attributes
     }
 
     File copynum_bedgraph_output           = sawfish_call.copynum_bedgraph[0]
@@ -304,8 +292,10 @@ workflow upstream {
 
   output {
     # alignments
-    File out_bam       = aligned_bam_data
-    File out_bam_index = aligned_bam_index
+    File  aligned_hifi_reads       = aligned_bam_data
+    File  aligned_hifi_reads_index = aligned_bam_index
+    File? aligned_fail_reads       = aligned_fail_bam_data
+    File? aligned_fail_reads_index = aligned_fail_bam_index
 
     #hg002 alingments
     #File out_bam_hg002       = aligned_bam_data_hg002
@@ -345,14 +335,6 @@ workflow upstream {
     File small_variant_vcf_index  = deepvariant.vcf_index
     File small_variant_gvcf       = deepvariant.gvcf
     File small_variant_gvcf_index = deepvariant.gvcf_index
-
-    # trgt outputs
-    File   trgt_vcf                  = trgt.vcf
-    File   trgt_vcf_index            = trgt.vcf_index
-    File   trgt_spanning_reads       = trgt.bam
-    File   trgt_spanning_reads_index = trgt.bam_index
-    String stat_trgt_genotyped_count = trgt.stat_genotyped_count
-    String stat_trgt_uncalled_count  = trgt.stat_uncalled_count
 
     # paraphase outputs
     File? paraphase_output_json         = paraphase.out_json
@@ -396,9 +378,8 @@ workflow upstream {
     Array[String] msg = flatten(
       [
         flatten(pbmm2.msg),
-        [qc_sex],
         [include_fail_reads],
-        trgt.msg,
+        [qc_sex],
         sawfish_discover.msg
       ]
     )

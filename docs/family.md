@@ -41,12 +41,9 @@ flowchart TD
       filter_fail_reads["filter fail_reads alignments (if fail_reads provided)"]
     end
     samtools_merge["samtools merge"]
-    samtools_merge_fail_reads["samtools merge hifi_reads and fail_reads"]
     mosdepth["mosdepth"]
     paraphase["Paraphase"]
     mitorsaw["MitorSaw"]
-    trgt["TRGT"]
-    trgt_dropouts["TR coverage dropouts"]
     deepvariant["DeepVariant"]
     sawfish_discover["Sawfish discover"]
   end
@@ -58,6 +55,8 @@ flowchart TD
   end
   subgraph "`**Phasing and Downstream**`"
     hiphase["HiPhase"]
+    samtools_merge_fail_reads["samtools merge hifi_reads and fail_reads"]
+    trgt["TRGT"]
     bam_stats["BAM stats"]
     bcftools_roh["bcftools roh"]
     bcftools_stats["bcftools stats\n(small variants)"]
@@ -91,13 +90,13 @@ flowchart TD
   deepvariant --> sawfish_discover
   deepvariant --> glnexus
   sawfish_discover --> sawfish_call
-  trgt --> hiphase
 
   glnexus --> split_glnexus
   sawfish_call --> split_sawfish
   split_glnexus --> hiphase
   split_sawfish --> hiphase
 
+  hiphase --> trgt
   hiphase --> bam_stats
   hiphase --> bcftools_roh
   hiphase --> bcftools_stats
