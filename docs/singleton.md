@@ -1,5 +1,7 @@
 # singleton.wdl inputs and outputs
 
+> **⚠️ Note**: This fork only supports the `family` workflow. The singleton workflow is not actively maintained or tested. For CRISPR editing QC analysis, use the [family workflow](family.md).
+
 - [singleton.wdl inputs and outputs](#singletonwdl-inputs-and-outputs)
   - [DAG (simplified)](#dag-simplified)
   - [Inputs](#inputs)

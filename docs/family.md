@@ -1,5 +1,7 @@
 # family.wdl inputs and outputs
 
+> **Note**: This fork adds CRISPR editing QC features. Samples can specify `expected_edits` to validate genomic changes from CRISPR experiments.
+
 - [family.wdl inputs and outputs](#familywdl-inputs-and-outputs)
   - [DAG (simplified)](#dag-simplified)
   - [Inputs](#inputs)
@@ -156,6 +158,7 @@ The `Sample` struct contains sample specific data and metadata. The struct has t
 | Array\[File\]? | fail_reads | Array of paths to failed HiFi reads in unaligned BAM format (optional) | If provided, these reads will be aligned to the bait-captured regions. |
 | String? | father_id | sample_id of father (optional) |  |
 | String? | mother_id | sample_id of mother (optional) |  |
+| File? | expected_edits | JSON file describing expected CRISPR edits (optional) | **CRISPR editing QC**: Specifies anticipated genomic changes for validation. See [example_expected_edit.json](../example_expected_edit.json) for format. |
 
 ## Outputs
 

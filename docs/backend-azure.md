@@ -1,5 +1,7 @@
 # Configuring Cromwell on Azure
 
+> **⚠️ Note**: This fork is primarily tested on HPC environments. Cloud backend support is inherited from the upstream PacBio pipeline but not actively maintained or tested for CRISPR editing workflows. Use at your own risk.
+
 Workflows can be run in Azure by setting up [Cromwell on Azure (CoA)](https://github.com/microsoft/CromwellOnAzure). Documentation on deploying and configuring an instance of CoA can be found [here](https://github.com/microsoft/CromwellOnAzure/wiki/Deploy-your-instance-of-Cromwell-on-Azure).
 
 ## Requirements

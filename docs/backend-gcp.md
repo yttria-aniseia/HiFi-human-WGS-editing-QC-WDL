@@ -1,5 +1,7 @@
 # Configuring Cromwell on GCP
 
+> **⚠️ Note**: This fork is primarily tested on HPC environments. Cloud backend support is inherited from the upstream PacBio pipeline but not actively maintained or tested for CRISPR editing workflows. Use at your own risk.
+
 [Cromwell's documentation](https://cromwell.readthedocs.io/en/stable/tutorials/PipelinesApi101/) on getting started with Google's genomics Pipelines API can be used to set up the resources needed to run the workflow.
 
 ## Configuring and running the workflow

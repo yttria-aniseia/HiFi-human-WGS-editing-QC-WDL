@@ -1,0 +1,46 @@
+{
+  "humanwgs_family.family": {
+    "family_id": "EXAMPLE_FAM",
+    "samples": [
+      {
+        "sample_id": "parent_wt",
+        "hifi_reads": [
+          "/path/to/your/parent_wt.bam"
+        ],
+        "affected": false,
+        "sex": "FEMALE",
+        "father_id": null,
+        "mother_id": null
+      },
+      {
+        "sample_id": "edited_clone1",
+        "hifi_reads": [
+          "/path/to/your/edited_clone1.bam"
+        ],
+        "affected": true,
+        "sex": "FEMALE",
+        "father_id": null,
+        "mother_id": "parent_wt",
+        "expected_edits": "/path/to/your/edited_clone1_expected_edits.json"
+      },
+      {
+        "sample_id": "edited_clone2",
+        "hifi_reads": [
+          "/path/to/your/edited_clone2.bam"
+        ],
+        "affected": true,
+        "sex": "FEMALE",
+        "father_id": null,
+        "mother_id": "parent_wt",
+        "expected_edits": "/path/to/your/edited_clone2_expected_edits.json"
+      }
+    ]
+  },
+  "humanwgs_family.phenotypes": "NA",
+  "humanwgs_family.ref_map_file": "GRCh38.ref_map.v3p1p0.template.tsv",
+  "humanwgs_family.tertiary_map_file": "GRCh38.tertiary_map.v3p1p0.template.tsv",
+  "humanwgs_family.somatic_map_file": "GRCh38.somatic_map.v3p1p0.template.tsv",
+  "humanwgs_family.pharmcat_min_coverage": 1,
+  "humanwgs_family.backend": "HPC",
+  "humanwgs_family.preemptible": true
+}

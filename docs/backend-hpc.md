@@ -1,5 +1,7 @@
 # Installing and configuring for HPC backends
 
+> **Note**: This fork only supports the `family` workflow. The instructions below are for running the family workflow on HPC using SLURM.
+
 Either `miniwdl` or `Cromwell` can be used to run workflows on the HPC.
 
 ## Installing and configuring `miniwdl`
@@ -11,7 +13,7 @@ Either `miniwdl` or `Cromwell` can be used to run workflows on the HPC.
 
 ### Configuration
 
-An [example miniwdl.cfg file](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends/hpc/miniwdl.cfg) is provided here. This should be placed at `~/.config/miniwdl.cfg` and edited to match your slurm configuration. This allows running workflows using a basic SLURM setup.
+An example miniwdl.cfg file is provided in `backends/hpc/miniwdl.cfg`. This should be placed at `~/.config/miniwdl.cfg` and edited to match your SLURM configuration.
 
 > [!IMPORTANT]
 > In order to simplify workflow inputs, we make use of `map` files to specify the input data. This allows for a more concise input file, but requires changing a miniwdl configuration option to allow workflows to access files that are not expressly supplied with workflow inputs.  To enable this, add the following line to your `miniwdl.cfg` file:
@@ -38,34 +40,52 @@ Cromwell supports a number of different HPC backends; see [Cromwell's documentat
 
 ### Filling out workflow inputs
 
-Fill out any information missing in [the inputs file](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends/hpc/singleton.hpc.inputs.json). Once you have downloaded the reference data bundle, ensure that you have replaced the `<local_path_prefix>` in the input template file with the local path to the reference datasets on your HPC.
+Create an input configuration JSON describing your samples and their relationships. See [example_input_config.json](../example_input_config.json) as a template. After downloading reference data with `./scripts/setup.sh`, the template map files at the repository root will be populated with local paths.
 
-See [the inputs section of the singleton README](./singleton.md#inputs) for more information on the structure of the inputs.json file.
+See [family.md](./family.md) for input structure details, or [biohub-setup.md](./biohub-setup.md) for biohub-specific instructions.
+
+### Recommended: Using launch.sh
+
+The automated launcher script handles file staging and setup:
+
+```bash
+./scripts/launch.sh my_inputs.json --work-dir my_analysis_name
+conda activate hifi-wgs
+bash my_analysis_name/run_workflow.sh
+```
+
+Or run everything at once:
+
+```bash
+./scripts/launch.sh my_inputs.json --work-dir my_analysis_name --run
+```
+
+See [scripts/README.md](../scripts/README.md) for details.
+
+### Manual execution
 
 #### Running via miniwdl
 
 ```bash
-miniwdl run workflows/singleton.wdl --input <inputs_json_file>
+miniwdl run workflows/family.wdl --input <inputs_json_file>
 ```
 
-If your compute nodes cannot contact the internet, you can use the script at [`./scripts/populate_miniwdl_singularity_cache.sh`](../scripts/populate_miniwdl_singularity_cache.sh) with the image manifest at [`./image_manifest.txt`](../image_manifest.txt) to populate the miniwdl singularity cache with the required images from a login node with internet access.
+If compute nodes cannot reach the internet, use `./scripts/populate_miniwdl_singularity_cache.sh` with `./image_manifest.txt` to pre-pull container images from a login node.
 
 #### Running via Cromwell
 
 ```bash
-cromwell run workflows/singleton.wdl --input <inputs_json_file>
+cromwell run workflows/family.wdl --input <inputs_json_file>
 ```
 
 ## Reference data bundle
 
 [<img src="https://zenodo.org/badge/DOI/10.5281/zenodo.17086906.svg" alt="10.5281/zenodo.17086906">](https://zenodo.org/records/17086906)
 
-Reference data is hosted on Zenodo at [10.5281/zenodo.17086906](https://zenodo.org/record/17086906). Download the reference data bundle and extract it to a location on your HPC, then update the input template file with the path to the reference data.
+Reference data is hosted on Zenodo. Use the provided setup script to download and configure:
 
 ```bash
-## download the reference data bundle
-wget https://zenodo.org/record/17086906/files/hifi-wdl-resources-v3.1.0.tar
-
-## extract the reference data bundle and rename as dataset
-tar -xvf hifi-wdl-resources-v3.1.0.tar
+./scripts/setup.sh
 ```
+
+This downloads ~200GB of reference files and updates the template map files with local paths. The process takes several hours.

@@ -1,44 +1,42 @@
 <h1 align="center"><img width="300px" src="https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/images/logo_wdl_workflows.svg" alt="PacBio WGS Variant Pipeline"/></h1>
 
-<h1 align="center">PacBio WGS Variant Pipeline</h1>
+<h1 align="center">HiFi Human WGS CRISPR Edit QC Pipeline</h1>
 
-Workflow for analyzing human PacBio whole genome sequencing (WGS) data using [Workflow Description Language (WDL)](https://openwdl.org/).
+Workflow for analyzing human PacBio whole genome sequencing (WGS) data with CRISPR editing quality control using [Workflow Description Language (WDL)](https://openwdl.org/).
+
+**This is a fork of the [PacBio HiFi-human-WGS-WDL pipeline](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL) customized for CRISPR editing experiments.** This fork adds edit-specific QC analysis while maintaining the core variant calling and analysis features.
 
 - Docker images used by this workflow are defined in [the wdl-dockerfiles repo](../../../wdl-dockerfiles). Images are hosted in PacBio's [quay.io repo](https://quay.io/organization/pacbio).
-- Common tasks that may be reused within or between workflows are defined in [the wdl-common repo](../../../wdl-common).
+- Common tasks that may be reused within or between workflows are defined in [the wdl-common repo](../../../wdl-common). Note: In this fork, `wdl-common` is not actively maintained.
 
 ## Workflow
 
-Starting in v2, this repo contains two related workflows. The `singleton` workflow is designed to analyze a single sample, while the `family` workflow is designed to analyze a family of related samples.  With the exception of the joint calling tasks in the `family` workflow, both workflows make use of the same tasks, although the input and output structure differ.
+**Only the `family` workflow is supported in this fork.** The family workflow is designed to analyze cohorts of related samples, which is ideal for CRISPR editing experiments where you typically have:
+- Parental (wild-type) samples
+- Edited clones derived from the parent
+- Optional additional family relationships
 
-The `family` workflow will be best for most use cases.  The `singleton` workflow inputs and output structures are relatively flat, which should improve compatibility with platforms like Terra.
-
-Both workflows are designed to analyze human PacBio whole genome sequencing (WGS) data.  The workflows are designed to be run on Azure, AWS HealthOmics, GCP, or HPC backends.
+The workflow analyzes human PacBio HiFi whole genome sequencing data and includes specialized analysis for CRISPR edits when `expected_edits` are provided in the input configuration.
 
 **Workflow entrypoint**:
+- [workflows/family.wdl](workflows/family.wdl)
 
-- [workflows/singleton.wdl](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/workflows/singleton.wdl)
-- [workflows/family.wdl](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/workflows/family.wdl)
+**CRISPR Edit QC Features**:
+- Detection and validation of expected edits (insertions, deletions, substitutions)
+- Comparison of edited samples against parental baseline
+- Integration with standard germline and somatic variant calling
+- Support for complex edits including knock-ins with payload sequences
 
 ## Setup
 
-This is an actively developed workflow with multiple versioned releases, and we make use of git submodules for common tasks that are shared by multiple workflows. There are two ways to ensure you are using a supported release of the workflow and ensure that the submodules are correctly initialized:
+This fork uses git submodules for common tasks. To clone the repository with submodules:
 
-1) Download the release zips directly from a [supported release](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/releases/tag/v3.1.0):
+```bash
+git clone --recurse-submodules --depth=1 \
+  https://github.com/yttria-aniseia/HiFi-human-WGS-editing-QC-WDL.git
+```
 
-  ```bash
-  wget https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/releases/download/v3.1.0/hifi-human-wgs-singleton.zip
-  wget https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/releases/download/v3.1.0/hifi-human-wgs-family.zip
-  ```
-
-2) Clone the repository and initialize the submodules:
-
-  ```bash
-  git clone \
-    --depth 1 --branch v3.1.0 \
-    --recursive \
-    https://github.com/PacificBiosciences/HiFi-human-WGS-WDL.git
-  ```
+**For biohub-specific setup instructions** including conda environment setup, reference data download, and running the pipeline, see [docs/biohub-setup.md](docs/biohub-setup.md).
 
 ## Resource requirements
 
@@ -83,51 +81,99 @@ See the backend-specific documentation for details on setting up an engine.
 
 ### Filling out the inputs JSON
 
-The input to a workflow run is defined in JSON format. Template input files with reference dataset information filled out are available for each backend:
+The input to a workflow run is defined in JSON format. Use [example_input_config.json](example_inputs/example_input_config.json) as a template.
 
-- [HPC singleton entrypoint](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends/hpc/singleton.hpc.inputs.json)
-- [HPC family entrypoint](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends/hpc/family.hpc.inputs.json)
-- [AWS singleton entrypoint](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends/aws-healthomics/singleton.healthomics.inputs.json)
-- [AWS family entrypoint](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends/aws-healthomics/family.healthomics.inputs.json)
-- [Azure singleton entrypoint](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends/azure/singleton.azure.inputs.json)
-- [Azure family entrypoint](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends/azure/family.azure.inputs.json)
-- [GCP singleton entrypoint](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends/gcp/singleton.gcp.inputs.json)
-- [GCP family entrypoint](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends/gcp/family.gcp.inputs.json)
+Key steps:
+1. Define your samples with their HiFi read BAM files
+2. Specify family relationships (parent/child)
+3. For CRISPR-edited samples, provide an `expected_edits` JSON file path
+4. Point to your local reference map files (after running `./scripts/setup.sh`)
 
-Using the appropriate inputs template file, fill in the cohort and sample information (see [Workflow Inputs](#workflow-inputs) for more information on the input structure).
+See [docs/biohub-setup.md](docs/biohub-setup.md) for detailed instructions.
 
-If using an HPC backend, you will need to download the reference bundle and replace the `<local_path_prefix>` in the input template file with the local path to the reference datasets on your HPC.  If using Amazon HealthOmics, you will need to download the reference bundle, upload it to your S3 bucket, and adjust paths accordingly.
+**Automated workflow setup**: This fork includes a `launch.sh` script that automates file staging and workflow setup. See [scripts/README.md](scripts/README.md) for details.
 
 ### Running the workflow
 
-Run the workflow using the engine and backend that you have configured ([miniwdl](#run-directly-using-miniwdl), [Cromwell](#run-directly-using-cromwell)).
+**Recommended approach** using the automated launcher script:
 
-Note that the calls to `miniwdl` and `Cromwell` assume you are accessing the engine directly on the machine on which it has been deployed. Depending on the backend you have configured, you may be able to submit workflows using different methods (e.g. using trigger files in Azure, or using the Amazon Genomics CLI in AWS).
+```bash
+# 1. Setup and stage inputs (with automatic workflow execution)
+./scripts/launch.sh my_input_config.json --work-dir my_analysis_name --run
 
-#### Run directly using miniwdl
+# Or setup only, run workflow manually later
+./scripts/launch.sh my_input_config.json --work-dir my_analysis_name
+conda activate hifi-wgs
+bash my_analysis_name/run_workflow.sh
+```
 
-`miniwdl run --verbose workflows/singleton.wdl -i <input_file_path.json>`
+See [scripts/README.md](scripts/README.md) for detailed launcher script documentation.
 
-#### Run directly using Cromwell
+#### Run directly using miniwdl (HPC with SLURM)
 
-`java -jar <cromwell_jar_path> run workflows/singleton.wdl -i <input_file_path.json>`
+If not using the launcher script, you can run miniwdl directly:
 
-If Cromwell is running in server mode, the workflow can be submitted using cURL. Fill in the values of CROMWELL_URL and INPUTS_JSON below, then from the root of the repository, run:
+```bash
+miniwdl run --verbose \
+  --cfg miniwdl.cfg \
+  --dir output_directory \
+  workflows/family.wdl \
+  -i input_config.json
+```
+
+**Note**: This fork is primarily tested with miniwdl on HPC/SLURM environments. Support for other backends (Azure, GCP, AWS) may be limited.
 
 ## Workflow inputs
 
-This section describes the inputs required for a run of the workflow. Typically, only the sample-specific sections will be filled out by the user for each run of the workflow. Input templates with reference file locations filled out are provided [for each backend](https://github.com/PacificBiosciences/HiFi-human-WGS-WDL/blob/main/backends).
+Workflow inputs for the family entrypoint are described in [family](./docs/family.md) documentation.
 
-Workflow inputs for each entrypoint are described in [singleton](./docs/singleton.md) and [family](./docs/family.md) documentation.
+At a high level, we have two types of input files:
 
-At a high level, we have two types of inputs files:
+- **Map files** (TSV format) describe reference data and resources used for every workflow execution:
+  - `ref_map_file`: Reference genome FASTA, indices, and core annotation files
+  - `tertiary_map_file`: Population VCFs, SV databases, and tertiary analysis resources
+  - `somatic_map_file`: Somatic variant calling resources
 
-- _maps_ are TSV files describing inputs that will be used for every execution of the workflow, like reference genome FASTA files and genome interval BED files.
-- _inputs.json_ files are JSON files that describe the samples to be analyzed and the paths to the input files for each sample.
+- **Input configuration JSON** describes the samples to analyze and their relationships:
+  - Sample metadata (ID, sex, affected status, family relationships)
+  - Paths to HiFi read BAM files
+  - **For CRISPR editing experiments**: `expected_edits` field defining anticipated genomic changes
+
+**Example input configuration**:
+```json
+{
+  "humanwgs_family.family": {
+    "family_id": "EXAMPLE_FAM",
+    "samples": [
+      {
+        "sample_id": "parent",
+        "hifi_reads": ["/path/to/parent.bam"],
+        "sex": "FEMALE",
+        "affected": false
+      },
+      {
+        "sample_id": "edited_clone1",
+        "hifi_reads": ["/path/to/clone1.bam"],
+        "sex": "FEMALE",
+        "affected": true,
+        "mother_id": "parent",
+        "expected_edits": "/path/to/edits.json"
+      }
+    ]
+  },
+  "humanwgs_family.ref_map_file": "/path/to/GRCh38.ref_map.tsv",
+  "humanwgs_family.tertiary_map_file": "/path/to/GRCh38.tertiary_map.tsv",
+  "humanwgs_family.somatic_map_file": "/path/to/GRCh38.somatic_map.tsv"
+}
+```
+
+See [example_expected_edit.json](example_inputs/example_expected_edit.json) for the expected edit file format, or use the provided `genbank_to_crispr_json.py` helper script to generate edit descriptions from GenBank files.
 
 The resource bundle containing the GRCh38 reference and other files used in this workflow can be downloaded from Zenodo:
 
 [<img src="https://zenodo.org/badge/DOI/10.5281/zenodo.17086906.svg" alt="10.5281/zenodo.17086906">](https://zenodo.org/records/17086906)
+
+Template map files are provided at the repository root: `GRCh38.ref_map.v3p1p0.template.tsv`, `GRCh38.tertiary_map.v3p1p0.template.tsv`, and `GRCh38.somatic_map.v3p1p0.template.tsv`. After downloading the reference bundle, update the paths in these templates to point to your local copies.
 
 # Tool versions and Docker images
 

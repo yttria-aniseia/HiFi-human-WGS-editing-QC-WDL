@@ -1,36 +1,46 @@
 #!/bin/bash
 # launch.sh: Automated launcher for HiFi human WGS family workflow
-# 
+#
 # This script automates the setup and execution of the HiFi human WGS workflow
-# by copying input files to a local directory structure and generating the
-# appropriate inputs JSON file.
+# in multiple phases:
+#   Phase 1: Setup scripts in current shell (prepull images, create work dir)
+#   Phase 2: Input processing in SLURM job (copy/merge/strip files)
+#   Phase 3: Optional workflow execution (if --run flag provided)
+#
+# TODO: Phase 4: Automatic report generation after workflow completion
 
 # Usage:
-#   ./launch.sh <input_config_json> [work_dir_name] [cache_dir] [tmp_dir] [miniwdl_cfg]
+#   ./launch.sh <input_config_json> [options]
 #
 # Arguments:
-#   input_config_json: JSON file with sample information and file paths (similar to family.hpc.inputs.v2.json)
-#   work_dir_name: Optional name for working directory (default: workflow_run_$(date +%Y%m%d_%H%M%S))
-#                  If provided without path separators, creates ./[work_dir_name]
-#                  If provided with path, uses as full path
-#   cache_dir: Optional Apptainer/Singularity cache directory (default: <work_dir>/miniwdl_cache)
-#   tmp_dir: Optional Apptainer/Singularity temp directory (default: <work_dir>/miniwdl_tmp)
-#   miniwdl_cfg: Optional path to custom miniwdl.cfg file (default: <repo_root>/miniwdl.cfg)
+#   input_config_json: JSON file with sample information and file paths
+#
+# Options:
+#   --work-dir <path>    Work directory path (default: workflow_run_YYYYMMDD_HHMMSS)
+#   --cache-dir <path>   Apptainer cache directory (default: <work_dir>/miniwdl_cache)
+#   --tmp-dir <path>     Apptainer temp directory (default: <work_dir>/miniwdl_tmp)
+#   --miniwdl-cfg <path> Custom miniwdl.cfg file (default: <repo_root>/miniwdl.cfg)
+#   --run                Start miniwdl workflow after input processing
+#   --help               Show this help message
 
 set -euo pipefail
 
-# Check for required arguments
-if [[ $# -lt 1 ]]; then
-	# <<- here-document ignores leading tab, preserves spaces
-    cat >&2 <<- EOF
-	Usage: $0 <input_config_json> [work_dir_name] [cache_dir] [tmp_dir] [miniwdl_cfg]
+# Function to show help message
+show_help() {
+    cat <<- EOF
+	Usage: $0 <input_config_json> [options]
+
 	Arguments:
 	  input_config_json: JSON file with sample information and file paths
-	  work_dir_name: Optional name for working directory (default: workflow_run_YYYYMMDD_HHMMSS)
-	                 Examples: 'my_analysis', 'family_trio_2024', '/full/path/to/workdir'
-	  cache_dir: Optional Apptainer cache directory (default: <work_dir>/miniwdl_cache)
-	  tmp_dir: Optional Apptainer temp directory (default: <work_dir>/miniwdl_tmp)
-	  miniwdl_cfg: Optional path to custom miniwdl.cfg (default: <repo_root>/miniwdl.cfg)
+
+	Options:
+	  --work-dir <path>    Work directory path (default: workflow_run_YYYYMMDD_HHMMSS)
+	  --cache-dir <path>   Apptainer cache directory (default: <work_dir>/miniwdl_cache)
+	  --tmp-dir <path>     Apptainer temp directory (default: <work_dir>/miniwdl_tmp)
+	  --miniwdl-cfg <path> Custom miniwdl.cfg file (default: <repo_root>/miniwdl.cfg)
+	  --run                Start miniwdl workflow after input processing
+	  --help               Show this help message
+
 	Example input_config_json format:
 	{
 	  "humanwgs_family.family": {
@@ -46,38 +56,70 @@ if [[ $# -lt 1 ]]; then
 	  },
 	  "humanwgs_family.ref_map_file": "/path/to/ref_map.tsv",
 	  "humanwgs_family.somatic_map_file": "/path/to/somatic_map.tsv",
-	  "humanwgs_family.tertiary_map_file": "/path/to/tertiary_map.tsv"
+	  "humanwgs_family.tertiary_map_file": "/path/to/tertiary_map.tsv",
+	  "humanwgs_family.expected_edits": "/path/to/expected_edits.json"
 	}
 	EOF
+}
+
+# Parse arguments
+INPUT_CONFIG_JSON=""
+WORK_DIR_NAME="workflow_run_$(date +%Y%m%d_%H%M%S)"
+CACHE_DIR=""
+TMP_DIR=""
+MINIWDL_CFG=""
+RUN_WORKFLOW=false
+
+if [[ $# -lt 1 ]]; then
+    show_help >&2
+    exit 1
 fi
 
-# Get absolute paths before changing directories
-INPUT_CONFIG_JSON="$(readlink -f "$1")"
-WORK_DIR_NAME="${2:-workflow_run_$(date +%Y%m%d_%H%M%S)}"
-CACHE_DIR="${3:-}"
-TMP_DIR="${4:-}"
-MINIWDL_CFG="${5:-}"
+# First positional argument is input config
+INPUT_CONFIG_JSON="$1"
+shift
 
-#prepull images
-bash scripts/create_image_manifest.sh
-bash scripts/populate_miniwdl_singularity_cache.sh image_manifest.txt $CACHE_DIR/singularity_cache
+# Parse optional flags
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --work-dir)
+            WORK_DIR_NAME="$2"
+            shift 2
+            ;;
+        --cache-dir)
+            CACHE_DIR="$2"
+            shift 2
+            ;;
+        --tmp-dir)
+            TMP_DIR="$2"
+            shift 2
+            ;;
+        --miniwdl-cfg)
+            MINIWDL_CFG="$2"
+            shift 2
+            ;;
+        --run)
+            RUN_WORKFLOW=true
+            shift
+            ;;
+        --help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown option: $1" >&2
+            show_help >&2
+            exit 1
+            ;;
+    esac
+done
 
-
-# Handle work directory path
-if [[ "$WORK_DIR_NAME" == *"/"* ]]; then
-    # Contains path separators, use as full path
-    WORK_DIR="$WORK_DIR_NAME"
-else
-    # No path separators, create in current directory
-    WORK_DIR="$(pwd)/$WORK_DIR_NAME"
-fi
-
-# Get absolute path for work directory
-WORK_DIR="$(readlink -f "$WORK_DIR" 2>/dev/null || echo "$WORK_DIR")"
+# Get absolute path for input config
+INPUT_CONFIG_JSON="$(readlink -f "$INPUT_CONFIG_JSON")"
 
 # Validate input file exists
 if [[ ! -f "$INPUT_CONFIG_JSON" ]]; then
-    echo "Error: Input config file '$1' does not exist." >&2
+    echo "Error: Input config file '$INPUT_CONFIG_JSON' does not exist." >&2
     exit 1
 fi
 
@@ -89,6 +131,32 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 if [[ ! -d "$REPO_ROOT/workflows" ]]; then
     echo "Error: workflows directory not found at $REPO_ROOT/workflows" >&2
     exit 1
+fi
+
+# Handle work directory path
+if [[ "$WORK_DIR_NAME" == *"/"* ]]; then
+    # Contains path separators, use as full path
+    WORK_DIR="$WORK_DIR_NAME"
+else
+    # No path separators, create in current directory
+    WORK_DIR="$(pwd)/$WORK_DIR_NAME"
+fi
+
+# Get absolute path for work directory (create if needed for readlink to work)
+mkdir -p "$WORK_DIR"
+WORK_DIR="$(readlink -f "$WORK_DIR")"
+
+# Set up cache directories
+if [[ -n "$CACHE_DIR" ]]; then
+    ACTUAL_CACHE_DIR="$(readlink -f "$CACHE_DIR" 2>/dev/null || echo "$CACHE_DIR")"
+else
+    ACTUAL_CACHE_DIR="$WORK_DIR/miniwdl_cache"
+fi
+
+if [[ -n "$TMP_DIR" ]]; then
+    ACTUAL_TMP_DIR="$(readlink -f "$TMP_DIR" 2>/dev/null || echo "$TMP_DIR")"
+else
+    ACTUAL_TMP_DIR="$WORK_DIR/miniwdl_tmp"
 fi
 
 # Determine miniwdl.cfg path
@@ -122,10 +190,6 @@ else
     ACTUAL_TMP_DIR="$WORK_DIR/miniwdl_tmp"
 fi
 
-# Set symbolic link paths in work directory
-CACHE_SYMLINK="$WORK_DIR/miniwdl_cache"
-TMP_SYMLINK="$WORK_DIR/miniwdl_tmp"
-
 echo "=== HiFi Human WGS Family Workflow Launcher ==="
 echo "Input config: $INPUT_CONFIG_JSON"
 echo "Work directory: $WORK_DIR"
@@ -133,7 +197,30 @@ echo "Repository root: $REPO_ROOT"
 echo "MiniWDL config: $MINIWDL_CFG_PATH"
 echo "Apptainer cache: $ACTUAL_CACHE_DIR"
 echo "Apptainer temp: $ACTUAL_TMP_DIR"
+echo "Run workflow: $RUN_WORKFLOW"
 echo ""
+
+################################################################################
+# PHASE 1: Setup in current shell
+################################################################################
+echo "=== Phase 1: Setup ==="
+
+# Create cache directory structure first (needed for prepull)
+echo "Creating cache directory structure..."
+mkdir -p "$ACTUAL_CACHE_DIR"/{call_cache,cromwell_db,download_cache,singularity_cache,tmp}
+mkdir -p "$ACTUAL_TMP_DIR"
+
+# Export environment variables for Apptainer (needed for prepull)
+export APPTAINER_CACHEDIR="$ACTUAL_CACHE_DIR/download_cache"
+export APPTAINER_TMPDIR="$ACTUAL_CACHE_DIR/tmp"
+
+# Prepull container images
+echo "Creating image manifest..."
+cd "$REPO_ROOT"
+bash scripts/create_image_manifest.sh
+
+echo "Prepulling container images to cache..."
+bash scripts/populate_miniwdl_singularity_cache.sh image_manifest.txt "$ACTUAL_CACHE_DIR/singularity_cache"
 
 # Create work directory structure
 echo "Creating work directory structure..."
@@ -155,156 +242,30 @@ sed -i.bak \
 # Remove backup file
 rm -f miniwdl.cfg.bak
 
-# Parse input JSON and copy files
-echo "Processing input files..."
+echo "Phase 1 setup complete."
+echo ""
 
-# Create a temporary Python script to process the JSON
-cat > process_config.py << 'EOF'
-import json
-import os
-import shutil
-import sys
-import tempfile
-import filecmp
-import subprocess
-from pathlib import Path
+################################################################################
+# PHASE 2: Input processing (SLURM job)
+################################################################################
+echo "=== Phase 2: Input Processing ==="
 
-def should_copy_file(dest_path):
-    """Check if file should be created (doesn't exist or has missing EOF block)"""
-    if not dest_path.exists():
-        return True
+# Copy Python script for input processing
+cp "$REPO_ROOT/scripts/process_input_config.py" "$WORK_DIR/process_input_config.py"
+chmod +x "$WORK_DIR/process_input_config.py"
 
-    # Run samtools quickcheck to verify BAM integrity
-    result = subprocess.run(
-        ["samtools", "quickcheck", str(dest_path)],
-        capture_output=True,
-        text=True
-    )
+# Submit the SLURM job
+echo "Submitting input processing job..."
+srun -u --cpus-per-task=16 --mem=16G --time=4:00:00 python3 process_input_config.py "$INPUT_CONFIG_JSON"
 
-    # Only regenerate if output mentions "missing EOF block"
-    if result.returncode != 0 and "missing EOF block" in result.stderr:
-        print(f"  File {dest_path} has missing EOF block, will regenerate")
-        return True
+echo ""
+echo "Phase 2 input processing complete."
+echo ""
 
-    return False
-
-if len(sys.argv) != 2:
-    print("Usage: python3 process_config.py <input_config_json>")
-    sys.exit(1)
-
-# Read input config
-with open(sys.argv[1], 'r') as f:
-    config = json.load(f)
-
-# Create new config with local paths
-new_config = {}
-inputs_dir = Path("inputs")
-
-# Process family samples
-if "humanwgs_family.family" in config:
-    family = config["humanwgs_family.family"]
-    new_family = {
-        "family_id": family["family_id"],
-        "samples": []
-    }
-    
-    for sample in family["samples"]:
-        new_sample = sample.copy()
-
-        # Merge all HiFi reads files into one BAM while stripping tags
-        merged_filename = f"{sample['sample_id']}_hifi_reads_merged.bam"
-        dest_path = inputs_dir / merged_filename
-
-        # Check if all input files exist
-        all_exist = all(os.path.exists(hifi_read_path) for hifi_read_path in sample["hifi_reads"])
-
-        if all_exist and should_copy_file(dest_path):
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                tmpdir_path = Path(tmpdirname)
-                temp_path = tmpdir_path / f"{sample['sample_id']}_hifi_reads_temp.bam"
-                print(f"Merging {len(sample['hifi_reads'])} HiFi read files -> {dest_path} (stripping tags: fi,ri,fp,rp,ip,pw,HP,PS,PC)")
-
-                # Step 1: Concatenate BAM files
-                print(f"  Step 1/2: Concatenating BAM files...")
-                subprocess.run([
-                    "samtools", "cat",
-                    "-o", str(temp_path)
-                ] + sample["hifi_reads"], check=True)
-
-                # Step 3: Strip tags using samtools reset
-                print(f"  Step 2/2: Stripping tags...")
-                subprocess.run([
-                    "samtools", "reset",
-                    "--thread", "15",
-                    "--remove-tag", "fi,ri,fp,rp,ip,pw,HP,PS,PC",
-                    "-o", str(dest_path),
-                    str(temp_path)
-                ], check=True)
-
-                # Clean up temporary files
-                temp_path.unlink()
-
-            new_sample["hifi_reads"] = [str(dest_path.absolute())]
-        elif all_exist:
-            print(f"Skipping merge for {sample['sample_id']} -> {dest_path} (already exists)")
-            new_sample["hifi_reads"] = [str(dest_path.absolute())]
-        else:
-            # Some files don't exist, keep original paths and warn
-            print(f"Warning: Some HiFi reads files not found for {sample['sample_id']}")
-            for hifi_read_path in sample["hifi_reads"]:
-                if not os.path.exists(hifi_read_path):
-                    print(f"  Missing: {hifi_read_path}")
-            new_sample["hifi_reads"] = sample["hifi_reads"]  # Keep original paths
-
-        new_family["samples"].append(new_sample)
-    
-    new_config["humanwgs_family.family"] = new_family
-
-# Copy reference files if they exist locally
-ref_files = ["ref_map_file", "somatic_map_file", "tertiary_map_file"]
-for ref_key in ref_files:
-    full_key = f"humanwgs_family.{ref_key}"
-    if full_key in config:
-        ref_path = config[full_key]
-        if os.path.exists(ref_path):
-            filename = f"{ref_key}.tsv"
-            dest_path = inputs_dir / filename
-
-            if should_copy_file(dest_path):
-                print(f"Copying {ref_path} -> {dest_path}")
-                shutil.copy2(ref_path, dest_path)
-            else:
-                print(f"Skipping {ref_path} -> {dest_path} (already exists)")
-            
-            new_config[full_key] = str(dest_path.absolute())
-        else:
-            print(f"Warning: Reference file not found: {ref_path}")
-            new_config[full_key] = ref_path  # Keep original path
-
-# Copy other config values
-for key, value in config.items():
-    if key not in new_config:
-        new_config[key] = value
-
-# Write new inputs JSON
-with open("family.hpc.inputs.json", "w") as f:
-    json.dump(new_config, f, indent=2)
-
-print("Generated family.hpc.inputs.json with local file paths")
-EOF
-
-# Run the Python script
-python3 process_config.py "$INPUT_CONFIG_JSON"
-
-# Clean up the temporary script
-rm process_config.py
-
-# Set up Singularity/Apptainer cache directories
-echo "Setting up container cache..."
-
-# Create the actual cache directory structure
-mkdir -p "$ACTUAL_CACHE_DIR"/{call_cache,cromwell_db,download_cache,singularity_cache,tmp}
-mkdir -p "$ACTUAL_TMP_DIR"
+################################################################################
+# PHASE 3: Optional workflow execution
+################################################################################
+echo "=== Phase 3: Workflow Execution ==="
 
 # Create run script
 echo "Creating run script..."
@@ -351,6 +312,18 @@ EOF
 
 chmod +x run_workflow.sh
 
+# Optionally start the workflow
+if [[ "$RUN_WORKFLOW" == "true" ]]; then
+    echo "Starting workflow execution (--run flag provided)..."
+    echo "NOTE: Make sure your conda environment with miniwdl is activated"
+    echo ""
+    cd "$REPO_ROOT"
+    bash "$WORK_DIR/run_workflow.sh"
+else
+    echo "Workflow execution skipped (use --run flag to auto-start)"
+    echo ""
+fi
+
 # Summary
 echo ""
 echo "=== Setup Complete ==="
@@ -362,16 +335,20 @@ echo "MiniWDL config: $WORK_DIR/miniwdl.cfg"
 echo "Apptainer cache: $ACTUAL_CACHE_DIR"
 echo "Run script: $WORK_DIR/run_workflow.sh"
 echo ""
-echo "To run the workflow:"
-echo "  1. Activate your conda environment: conda activate hifi-wgs"
-echo "  2. cd $REPO_ROOT"
-echo "  3. bash $WORK_DIR/run_workflow.sh"
-echo ""
-echo "Or run directly from repository root:"
-echo "  conda activate hifi-wgs"
-echo "  cd $REPO_ROOT"
-echo "  miniwdl run --cfg $WORK_DIR/miniwdl.cfg --dir $WORK_DIR/outputs workflows/family.wdl -i $WORK_DIR/family.hpc.inputs.json --verbose"
-echo ""
+
+if [[ "$RUN_WORKFLOW" != "true" ]]; then
+    echo "To run the workflow manually:"
+    echo "  1. Activate your conda environment: conda activate hifi-wgs"
+    echo "  2. cd $REPO_ROOT"
+    echo "  3. bash $WORK_DIR/run_workflow.sh"
+    echo ""
+    echo "Or run directly from repository root:"
+    echo "  conda activate hifi-wgs"
+    echo "  cd $REPO_ROOT"
+    echo "  miniwdl run --cfg $WORK_DIR/miniwdl.cfg --dir $WORK_DIR/outputs workflows/family.wdl -i $WORK_DIR/family.hpc.inputs.json --verbose"
+    echo ""
+fi
+
 echo "Monitor progress with:"
 echo "  tail -f $WORK_DIR/logs/workflow_*.log"
 

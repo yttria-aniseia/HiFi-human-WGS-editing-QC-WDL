@@ -1,0 +1,50 @@
+{
+  "humanwgs_family.family": {
+    "family_id": "crispr_experiment",
+    "samples": [
+      {
+        "sample_id": "parent_wt",
+        "hifi_reads": [
+          "/path/to/parent_wt.bam"
+        ],
+        "affected": false,
+        "sex": "FEMALE"
+      },
+      {
+        "sample_id": "clone_A1",
+        "hifi_reads": [
+          "/path/to/clone_A1.bam"
+        ],
+        "affected": true,
+        "sex": "FEMALE",
+        "mother_id": "parent_wt",
+        "expected_edits": "/path/to/gene_A_expected_edits.json"
+      },
+      {
+        "sample_id": "clone_A2",
+        "hifi_reads": [
+          "/path/to/clone_A2.bam"
+        ],
+        "affected": true,
+        "sex": "FEMALE",
+        "mother_id": "parent_wt",
+        "expected_edits": "/path/to/gene_A_expected_edits.json"
+      },
+      {
+        "sample_id": "clone_B1",
+        "hifi_reads": [
+          "/path/to/clone_B1.bam"
+        ],
+        "affected": true,
+        "sex": "FEMALE",
+        "mother_id": "parent_wt",
+        "expected_edits": "/path/to/gene_B_expected_edits.json"
+      }
+    ]
+  },
+  "humanwgs_family.ref_map_file": "GRCh38.ref_map.v3p1p0.template.tsv",
+  "humanwgs_family.tertiary_map_file": "GRCh38.tertiary_map.v3p1p0.template.tsv",
+  "humanwgs_family.somatic_map_file": "GRCh38.somatic_map.v3p1p0.template.tsv",
+  "humanwgs_family.backend": "HPC",
+  "humanwgs_family.preemptible": true
+}

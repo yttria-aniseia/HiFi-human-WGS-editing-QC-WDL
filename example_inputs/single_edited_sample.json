@@ -1,0 +1,21 @@
+{
+  "humanwgs_family.family": {
+    "family_id": "single_edit",
+    "samples": [
+      {
+        "sample_id": "edited_sample",
+        "hifi_reads": [
+          "/path/to/edited_sample.bam"
+        ],
+        "affected": true,
+        "sex": "FEMALE",
+        "expected_edits": "/path/to/expected_edits.json"
+      }
+    ]
+  },
+  "humanwgs_family.ref_map_file": "GRCh38.ref_map.v3p1p0.template.tsv",
+  "humanwgs_family.tertiary_map_file": "GRCh38.tertiary_map.v3p1p0.template.tsv",
+  "humanwgs_family.somatic_map_file": "GRCh38.somatic_map.v3p1p0.template.tsv",
+  "humanwgs_family.backend": "HPC",
+  "humanwgs_family.preemptible": true
+}
