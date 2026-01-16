@@ -220,7 +220,7 @@ task pav {
     cd "${OUTPUT_DIR}"
 
     # --nt parameter prevents the .fai read error common in pav 2.x.x, allegedly will be fixed in pav 3
-    snakemake -s /opt/pav/Snakefile --nt ${CLEAN_NAME}.vcf.gz --quiet host reason rules
+    snakemake -s /opt/pav/Snakefile --nt ${CLEAN_NAME}.vcf.gz --quiet host rules
   >>>
 
   output {
