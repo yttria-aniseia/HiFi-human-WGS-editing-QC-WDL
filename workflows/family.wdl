@@ -222,8 +222,8 @@ workflow humanwgs_family {
     call PlotCNV.cnvpytor_plot {
       input:
         sample_id = sample.sample_id,
-        aligned_bam = upstream.out_bam,
-        aligned_bam_index = upstream.out_bam_index,
+        aligned_bam = upstream.aligned_hifi_reads,
+        aligned_bam_index = upstream.aligned_hifi_reads_index,
         runtime_attributes = default_runtime_attributes
     }
   }
