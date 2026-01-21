@@ -213,6 +213,8 @@ mkdir -p "$ACTUAL_TMP_DIR"
 # Export environment variables for Apptainer (needed for prepull)
 export APPTAINER_CACHEDIR="$ACTUAL_CACHE_DIR/download_cache"
 export APPTAINER_TMPDIR="$ACTUAL_CACHE_DIR/tmp"
+export SINGULARITY_CACHEDIR="$ACTUAL_CACHE_DIR/download_cache"
+export SINGULARITY_TMPDIR="$ACTUAL_CACHE_DIR/tmp"
 
 # Prepull container images
 echo "Creating image manifest..."
@@ -289,7 +291,9 @@ fi
 
 # Set container cache directories
 export APPTAINER_CACHEDIR="$ACTUAL_CACHE_DIR/download_cache"
-export APPTAINER_TMP_DIR="$ACTUAL_CACHE_DIR/tmp"
+export APPTAINER_TMPDIR="$ACTUAL_CACHE_DIR/tmp"
+export SINGULARITY_CACHEDIR="$ACTUAL_CACHE_DIR/download_cache"
+export SINGULARITY_TMPDIR="$ACTUAL_CACHE_DIR/tmp"
 
 echo "Starting HiFi human WGS family workflow..."
 echo "Timestamp: \$(date)"
