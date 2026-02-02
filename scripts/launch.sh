@@ -50,14 +50,14 @@ show_help() {
 	        "sample_id": "sample1",
 	        "hifi_reads": ["/path/to/reads.bam"],
 	        "sex": "MALE",
-	        "affected": false
+	        "affected": false,
+	        "expected_edit": "/path/to/sample1_expected_edits.json"
 	      }
 	    ]
 	  },
 	  "humanwgs_family.ref_map_file": "/path/to/ref_map.tsv",
 	  "humanwgs_family.somatic_map_file": "/path/to/somatic_map.tsv",
-	  "humanwgs_family.tertiary_map_file": "/path/to/tertiary_map.tsv",
-	  "humanwgs_family.expected_edits": "/path/to/expected_edits.json"
+	  "humanwgs_family.tertiary_map_file": "/path/to/tertiary_map.tsv"
 	}
 	EOF
 }

@@ -6,7 +6,7 @@ This script processes a workflow input JSON file by:
 - Merging multiple HiFi BAM files per sample into single files
 - Stripping unnecessary tags from BAM files (fi,ri,fp,rp,ip,pw,HP,PS,PC)
 - Copying reference map files to work directory
-- Copying expected edits JSON to work directory
+- Copying per-sample expected edit JSON files to work directory
 - Generating a new inputs JSON with local file paths
 """
 
@@ -109,6 +109,25 @@ def main():
                         print(f"  Missing: {hifi_read_path}")
                 new_sample["hifi_reads"] = sample["hifi_reads"]  # Keep original paths
 
+            # Process per-sample expected_edit files
+            if "expected_edit" in sample and sample["expected_edit"]:
+                expected_edit_path = sample["expected_edit"]
+                if os.path.exists(expected_edit_path):
+                    # Create unique filename based on sample ID
+                    filename = f"{sample['sample_id']}_expected_edits.json"
+                    dest_path = inputs_dir / filename
+
+                    if dest_path.exists():
+                        print(f"Skipping {expected_edit_path} -> {dest_path} (already exists)")
+                    else:
+                        print(f"Copying {expected_edit_path} -> {dest_path}")
+                        shutil.copy2(expected_edit_path, dest_path)
+
+                    new_sample["expected_edit"] = str(dest_path.absolute())
+                else:
+                    print(f"Warning: Expected edit file not found for {sample['sample_id']}: {expected_edit_path}")
+                    new_sample["expected_edit"] = expected_edit_path
+
             new_family["samples"].append(new_sample)
 
         new_config["humanwgs_family.family"] = new_family
@@ -133,24 +152,6 @@ def main():
             else:
                 print(f"Warning: Reference file not found: {ref_path}")
                 new_config[full_key] = ref_path  # Keep original path
-
-    # Copy expected_edits file if it exists
-    if "humanwgs_family.expected_edits" in config:
-        expected_edits_path = config["humanwgs_family.expected_edits"]
-        if os.path.exists(expected_edits_path):
-            filename = "expected_edits.json"
-            dest_path = inputs_dir / filename
-
-            if dest_path.exists():
-                print(f"Skipping {expected_edits_path} -> {dest_path} (already exists)")
-            else:
-                print(f"Copying {expected_edits_path} -> {dest_path}")
-                shutil.copy2(expected_edits_path, dest_path)
-
-            new_config["humanwgs_family.expected_edits"] = str(dest_path.absolute())
-        else:
-            print(f"Warning: Expected edits file not found: {expected_edits_path}")
-            new_config["humanwgs_family.expected_edits"] = expected_edits_path
 
     # Copy other config values
     for key, value in config.items():
