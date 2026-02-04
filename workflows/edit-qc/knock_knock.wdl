@@ -56,7 +56,9 @@ guide_seq = edit_info['guide']
 left_ha   = edit_info.get('left_ha',  '')
 payload   = edit_info.get('payload',  '')
 right_ha  = edit_info.get('right_ha', '')
-donor_seq = left_ha + payload + right_ha
+ctx_before = edit_info.get('donor_context_before', '')
+ctx_after  = edit_info.get('donor_context_after',  '')
+donor_seq = ctx_before + left_ha + payload + right_ha + ctx_after
 donor_name = f"{symbol}_donor"
 
 for fname, val in [
@@ -80,7 +82,7 @@ with open('donor.fasta', 'w') as f:
 
 print(f"Target:  {symbol} at {chrom}:{t_start}-{t_end}", file=sys.stderr)
 print(f"Guide:   {guide_seq}", file=sys.stderr)
-print(f"Donor:   {len(donor_seq)} bp  ({len(left_ha)} HA_L + {len(payload)} payload + {len(right_ha)} HA_R)", file=sys.stderr)
+print(f"Donor:   {len(donor_seq)} bp  ({len(ctx_before)} ctx_5p + {len(left_ha)} HA_L + {len(payload)} payload + {len(right_ha)} HA_R + {len(ctx_after)} ctx_3p)", file=sys.stderr)
 PYEOF
 
     SYMBOL=$(cat symbol.txt)
@@ -145,6 +147,88 @@ sample_name,platform,CCS_fastq_fn,genome,donor,amplicon_primers,primers,sgRNAs
 CSVEOF
 
     cat "${BASE}/data/${BATCH}/sample_sheet.csv" >&2
+
+    # ── 3b. Patch knock-knock: guard against reads with zero alignments ────────
+    # Upstream bug: ReadDiagram.draw_reference() in visualize/architecture.py
+    # indexes alignment_coordinates[0] in the 'centered on primers' branch
+    # without a length check, crashing with IndexError on unaligned reads.
+    # The conda site-packages dir is read-only in the container, so patch at
+    # runtime via a sitecustomize.py on PYTHONPATH that monkey-patches the
+    # method when the module is imported.
+    KK_PATCH_DIR="$(pwd)/kk_patch"
+    mkdir -p "${KK_PATCH_DIR}"
+    cat > "${KK_PATCH_DIR}/sitecustomize.py" <<'PYEOF'
+# Runtime monkey-patch for knock_knock.visualize.architecture.ReadDiagram.
+# Wraps draw_reference so that an IndexError from alignment_coordinates[0]
+# on a read with no alignments is caught and that ref_name is simply skipped.
+import sys
+
+def _install():
+    try:
+        from knock_knock.visualize import architecture as _arch
+    except Exception:
+        return
+    RD = getattr(_arch, "ReadDiagram", None)
+    if RD is None or getattr(RD.draw_reference, "_kk_patched", False):
+        return
+    _orig = RD.draw_reference
+    def draw_reference(self, ref_name, ref_y, *args, **kwargs):
+        try:
+            return _orig(self, ref_name, ref_y, *args, **kwargs)
+        except IndexError as e:
+            print(f"[kk_patch] skipping draw_reference for {ref_name!r}: {e}",
+                  file=sys.stderr)
+            return None
+    draw_reference._kk_patched = True
+    RD.draw_reference = draw_reference
+
+def _install_num_examples():
+    # Raise default num_examples for generate_all_outcome_example_figures
+    # from 10 → 100 so more per-category example diagrams are emitted.
+    try:
+        from knock_knock import experiment as _exp
+    except Exception:
+        return
+    Exp = getattr(_exp, "Experiment", None)
+    if Exp is None:
+        return
+    fn = getattr(Exp, "generate_all_outcome_example_figures", None)
+    if fn is None or getattr(fn, "_kk_patched", False):
+        return
+    def generate_all_outcome_example_figures(self, num_examples=100, **kwargs):
+        return fn(self, num_examples=num_examples, **kwargs)
+    generate_all_outcome_example_figures._kk_patched = True
+    Exp.generate_all_outcome_example_figures = generate_all_outcome_example_figures
+
+def _hook(modname, installer):
+    if modname in sys.modules:
+        installer()
+        return
+    import importlib.abc, importlib.util
+    class _Hook(importlib.abc.MetaPathFinder):
+        def find_spec(self, name, path, target=None):
+            if name == modname:
+                sys.meta_path.remove(self)
+                spec = importlib.util.find_spec(name)
+                if spec is not None:
+                    loader = spec.loader
+                    _exec = loader.exec_module
+                    def exec_module(module):
+                        _exec(module)
+                        installer()
+                    loader.exec_module = exec_module
+                return None
+            return None
+    sys.meta_path.insert(0, _Hook())
+
+# Install now if already imported; otherwise hook import.
+_install()
+_hook("knock_knock.visualize.architecture", _install)
+_install_num_examples()
+_hook("knock_knock.experiment", _install_num_examples)
+PYEOF
+
+    export PYTHONPATH="${KK_PATCH_DIR}${PYTHONPATH:+:${PYTHONPATH}}"
 
     # ── 4. Build strategies ────────────────────────────────────────────────────
     # Reads sample sheet, aligns protospacer into ctx.fa, extracts the target
