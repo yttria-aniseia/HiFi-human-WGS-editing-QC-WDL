@@ -40,6 +40,21 @@ hg002_fasta_index${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz.fai
 hg002_fasta_bgzf_index${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz.gzi
 hg002_chain${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1_to_GRCh38.chain.gz" >> GRCh38.ref_map.${VERp}.template.tsv
 
+# Build knock-knock Singularity image (no pre-built container available)
+if [[ -z "${SINGULARITY_CACHEDIR}" ]]; then
+	echo "WARNING: SINGULARITY_CACHEDIR is not set; skipping knock-knock container build"
+else
+	KK_SIF="${SINGULARITY_CACHEDIR}/docker___knock-knock.sif"
+	if [[ ! -f "${KK_SIF}" ]]; then
+		echo "Building knock-knock Singularity image..."
+		mkdir -p "${SINGULARITY_CACHEDIR}"
+		apptainer build --fakeroot "${KK_SIF}" knock-knock.def
+		echo "knock-knock image built: ${KK_SIF}"
+	else
+		echo "knock-knock Singularity image already exists: ${KK_SIF}"
+	fi
+fi
+
 if [[ $FETCH_EXTRA -eq 1 ]]; then
 	echo "Starting somatic suite download"
 	wget https://zenodo.org/record/14847828/files/hifisomatic_resources.tar.gz
