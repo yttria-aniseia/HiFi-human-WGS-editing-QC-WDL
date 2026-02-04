@@ -5,53 +5,49 @@ import "../wdl-common/wdl/structs.wdl"
 # Task to check for loss of heterozygosity (LOH) around a CRISPR cut site
 task check_loh {
   meta {
-    description: "Check for loss of heterozygosity around a CRISPR cut site by comparing parental HET SNPs to sample genotypes"
+    description: "Check for loss of heterozygosity around a CRISPR cut site using joint-called small variant VCF: count parental HET SNPs retained as HET in the edited sample"
   }
 
   parameter_meta {
-    sample_id: "Sample identifier"
-    sample_bam: "Sample aligned BAM file"
-    sample_bai: "Sample BAM index"
-    parent_vcf: "Parent sample VCF (used to identify parental HET SNPs)"
-    parent_vcf_index: "Parent VCF tabix index"
-    ref_fasta: "Reference genome FASTA"
-    ref_fasta_index: "Reference FASTA index (.fai)"
+    sample_id: "Sample identifier (for output file naming)"
+    parent_sample_idx: "0-based index of the parent sample in joint_vcf"
+    sample_idx: "0-based index of the edited sample in joint_vcf"
+    joint_vcf: "Joint-called, phased small variant VCF containing both parent and sample"
+    joint_vcf_index: "Tabix index for joint_vcf"
     expected_cut_site: "Expected cut site in chr:pos format (e.g. chr15:65869582)"
     cut_strand: "Strand of the guide at the cut site (+ or -)"
-    window_size: "Window size in bp to check upstream and downstream of the cut site (default 100000)"
+    window_size: "Window size in bp upstream and downstream of the cut site (default 200000)"
   }
 
   input {
     String sample_id
-    File sample_bam
-    File sample_bai
-    File parent_vcf
-    File parent_vcf_index
-    File ref_fasta
-    File ref_fasta_index
+    Int parent_sample_idx
+    Int sample_idx
+    File joint_vcf
+    File joint_vcf_index
     String expected_cut_site
     String cut_strand
-    Int window_size = 100000
+    Int window_size = 200000
     Int mem_gb = 8
     RuntimeAttributes runtime_attributes
   }
 
-  Int disk_size = ceil(size(sample_bam, "GB") + size(parent_vcf, "GB") + size(ref_fasta, "GB")) + 30
+  Int disk_size = ceil(size(joint_vcf, "GB")) + 10
 
   command <<<
     set -euo pipefail
 
-    python3 <<'EOF'
+    python3 <<'PYEOF'
 import subprocess
 import sys
 
-sample_bam    = "~{sample_bam}"
-parent_vcf    = "~{parent_vcf}"
-ref_fasta     = "~{ref_fasta}"
-sample_id     = "~{sample_id}"
-cut_site      = "~{expected_cut_site}"
-cut_strand    = "~{cut_strand}"
-window_size   = ~{window_size}
+sample_id         = "~{sample_id}"
+parent_sample_idx = ~{parent_sample_idx}
+sample_idx        = ~{sample_idx}
+joint_vcf         = "~{joint_vcf}"
+cut_site          = "~{expected_cut_site}"
+cut_strand        = "~{cut_strand}"
+window_size       = ~{window_size}
 
 # ---------------------------------------------------------------------------
 # Parse cut site and compute upstream / downstream windows
@@ -84,105 +80,71 @@ print(f"Upstream region:   {upstream_region}", file=sys.stderr)
 print(f"Downstream region: {downstream_region}", file=sys.stderr)
 
 
-def get_parent_het_positions(region, label):
-    """Return list of 0-based half-open BED lines for parental HET SNPs in region."""
-    r_view = subprocess.run(
-        ["bcftools", "view", "-g", "het", "-v", "snps", "-r", region, parent_vcf],
-        capture_output=True, check=True,
-    )
-    r_query = subprocess.run(
-        ["bcftools", "query", "-f", "%CHROM\t%POS0\t%END\n"],
-        input=r_view.stdout, capture_output=True, check=True,
-    )
-    positions = [ln for ln in r_query.stdout.decode().splitlines() if ln.strip()]
-    print(f"{label}: {len(positions)} parental HET SNP(s) in {region}", file=sys.stderr)
-    return positions
-
-
-def check_het_intact(positions, label):
-    """
-    For each parental HET position call genotypes in the sample BAM and return
-    (pct_intact, n_het_in_sample, n_total_parental_het).
-    """
-    n_total = len(positions)
-    if n_total == 0:
-        return 0.0, 0, 0
-
-    bed_file = f"{label}_het_positions.bed"
-    with open(bed_file, "w") as fh:
-        fh.write("\n".join(positions) + "\n")
-
-    # mpileup over target positions, then call genotypes
-    r_pileup = subprocess.run(
+def bcftools_count(region, filter_expr):
+    """Count variants in region passing filter_expr (bcftools -i expression)."""
+    r = subprocess.run(
         [
-            "bcftools", "mpileup",
-            "-R", bed_file,
-            "-f", ref_fasta,
-            "-a", "AD",
-            "--output-type", "u",
-            sample_bam,
+            "bcftools", "view",
+            "-r", region,
+            "-i", filter_expr,
+            "--output-type", "v",
+            joint_vcf,
         ],
         capture_output=True, check=True,
     )
-    r_call = subprocess.run(
-        ["bcftools", "call", "-m", "--output-type", "v"],
-        input=r_pileup.stdout, capture_output=True, check=True,
-    )
-
-    n_het = 0
-    for line in r_call.stdout.decode().splitlines():
-        if line.startswith("#"):
-            continue
-        fields = line.strip().split("\t")
-        if len(fields) < 10:
-            continue
-        fmt = fields[8].split(":")
-        smp = fields[9].split(":")
-        if "GT" not in fmt:
-            continue
-        gt = smp[fmt.index("GT")].replace("|", "/")
-        alleles = gt.split("/")
-        if len(alleles) == 2 and "." not in alleles and alleles[0] != alleles[1]:
-            n_het += 1
-
-    pct = (n_het / n_total * 100) if n_total > 0 else 0.0
-    print(
-        f"{label}: {n_het}/{n_total} parental HET SNP(s) intact in sample = {pct:.2f}%",
-        file=sys.stderr,
-    )
-    return pct, n_het, n_total
+    return sum(1 for ln in r.stdout.decode().splitlines() if ln and not ln.startswith("#"))
 
 
-up_positions = get_parent_het_positions(upstream_region,   "upstream")
-dn_positions = get_parent_het_positions(downstream_region, "downstream")
+def count_for_region(region, label):
+    # Denominator: variants where parent is het
+    denom = bcftools_count(region, f"GT[{parent_sample_idx}]='het'")
+    # Numerator: variants where both parent AND sample are het
+    numer = bcftools_count(region, f"GT[{parent_sample_idx}]='het' && GT[{sample_idx}]='het'")
+    print(f"{label}: parent_het={denom}, both_het={numer}", file=sys.stderr)
+    return numer, denom
 
-up_pct, up_het, up_total = check_het_intact(up_positions, "upstream")
-dn_pct, dn_het, dn_total = check_het_intact(dn_positions, "downstream")
 
-# Write float outputs (one value per file for WDL read_float())
-with open(f"{sample_id}_het_intact_upstream_pct.txt", "w") as fh:
-    fh.write(f"{up_pct:.4f}\n")
-with open(f"{sample_id}_het_intact_downstream_pct.txt", "w") as fh:
-    fh.write(f"{dn_pct:.4f}\n")
+up_num, up_den = count_for_region(upstream_region,   "upstream")
+dn_num, dn_den = count_for_region(downstream_region, "downstream")
 
-# Write human-readable summary
+up_ratio_str = f"{up_num}/{up_den}"
+dn_ratio_str = f"{dn_num}/{dn_den}"
+up_pct = (up_num / up_den) if up_den > 0 else 0.0
+dn_pct = (dn_num / dn_den) if dn_den > 0 else 0.0
+
+print(f"Upstream   het intact: {up_ratio_str} = {up_pct:.4f}", file=sys.stderr)
+print(f"Downstream het intact: {dn_ratio_str} = {dn_pct:.4f}", file=sys.stderr)
+
+with open(f"{sample_id}_loh_het_intact_upstream_ratio.txt",   "w") as fh:
+    fh.write(up_ratio_str + "\n")
+with open(f"{sample_id}_loh_het_intact_downstream_ratio.txt", "w") as fh:
+    fh.write(dn_ratio_str + "\n")
+with open(f"{sample_id}_loh_het_intact_upstream_pct.txt",     "w") as fh:
+    fh.write(f"{up_pct:.6f}\n")
+with open(f"{sample_id}_loh_het_intact_downstream_pct.txt",   "w") as fh:
+    fh.write(f"{dn_pct:.6f}\n")
+
 with open(f"{sample_id}_loh_summary.tsv", "w") as fh:
     fh.write("field\tvalue\n")
     fh.write(f"upstream_region\t{upstream_region}\n")
     fh.write(f"downstream_region\t{downstream_region}\n")
-    fh.write(f"upstream_het_total\t{up_total}\n")
-    fh.write(f"upstream_het_intact\t{up_het}\n")
-    fh.write(f"het_intact_upstream_pct\t{up_pct:.4f}\n")
-    fh.write(f"downstream_het_total\t{dn_total}\n")
-    fh.write(f"downstream_het_intact\t{dn_het}\n")
-    fh.write(f"het_intact_downstream_pct\t{dn_pct:.4f}\n")
-EOF
+    fh.write(f"upstream_parent_het_total\t{up_den}\n")
+    fh.write(f"upstream_both_het\t{up_num}\n")
+    fh.write(f"upstream_het_intact_ratio\t{up_ratio_str}\n")
+    fh.write(f"upstream_het_intact_pct\t{up_pct:.6f}\n")
+    fh.write(f"downstream_parent_het_total\t{dn_den}\n")
+    fh.write(f"downstream_both_het\t{dn_num}\n")
+    fh.write(f"downstream_het_intact_ratio\t{dn_ratio_str}\n")
+    fh.write(f"downstream_het_intact_pct\t{dn_pct:.6f}\n")
+PYEOF
   >>>
 
   output {
-    Float het_intact_upstream_pct   = read_float("~{sample_id}_het_intact_upstream_pct.txt")
-    Float het_intact_downstream_pct = read_float("~{sample_id}_het_intact_downstream_pct.txt")
-    File  loh_summary               = "~{sample_id}_loh_summary.tsv"
+    String het_intact_upstream_ratio   = read_string("~{sample_id}_loh_het_intact_upstream_ratio.txt")
+    String het_intact_downstream_ratio = read_string("~{sample_id}_loh_het_intact_downstream_ratio.txt")
+    Float  het_intact_upstream_pct     = read_float("~{sample_id}_loh_het_intact_upstream_pct.txt")
+    Float  het_intact_downstream_pct   = read_float("~{sample_id}_loh_het_intact_downstream_pct.txt")
+    File   loh_summary                 = "~{sample_id}_loh_summary.tsv"
   }
 
   runtime {

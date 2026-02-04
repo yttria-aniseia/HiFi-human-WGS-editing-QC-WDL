@@ -399,20 +399,19 @@ workflow humanwgs_family {
       }
     }
 
-    # LOH check around cut site - needs expected_edit, guidescan cut site, and a parent
+    # LOH check around cut site - needs expected_edit, guidescan cut site, a parent, and joint VCF
     if (defined(family.samples[sample_index].expected_edit)
         && defined(convert_offtarget_to_bed.expected_cut_site[sample_index])
-        && defined(resolved_parent_id[sample_index])) {
+        && defined(resolved_parent_id[sample_index])
+        && defined(merge_small_variant_vcfs.merged_vcf)) {
       Int parent_idx_for_loh = sidx_by_id[select_first([resolved_parent_id[sample_index]])]
       call LOH.check_loh {
         input:
           sample_id          = sample_id[sample_index],
-          sample_bam         = downstream.merged_haplotagged_bam[sample_index],
-          sample_bai         = downstream.merged_haplotagged_bam_index[sample_index],
-          parent_vcf         = downstream.phased_small_variant_vcf[parent_idx_for_loh],
-          parent_vcf_index   = downstream.phased_small_variant_vcf_index[parent_idx_for_loh],
-          ref_fasta          = ref_map["fasta"],        # !FileCoercion
-          ref_fasta_index    = ref_map["fasta_index"],  # !FileCoercion
+          parent_sample_idx  = parent_idx_for_loh,
+          sample_idx         = sample_index,
+          joint_vcf          = select_first([merge_small_variant_vcfs.merged_vcf]),
+          joint_vcf_index    = select_first([merge_small_variant_vcfs.merged_vcf_index]),
           expected_cut_site  = select_first([convert_offtarget_to_bed.expected_cut_site[sample_index]]),
           cut_strand         = select_first([convert_offtarget_to_bed.expected_cut_strand[sample_index], "+"]),
           runtime_attributes = default_runtime_attributes
@@ -903,9 +902,11 @@ workflow humanwgs_family {
     Array[File?] knock_knock_outcome_png_tarball           = knock_knock.outcome_png_tarball
 
     # LOH analysis outputs
-    Array[Float?] loh_het_intact_upstream_pct   = check_loh.het_intact_upstream_pct
-    Array[Float?] loh_het_intact_downstream_pct = check_loh.het_intact_downstream_pct
-    Array[File?]  loh_summary                   = check_loh.loh_summary
+    Array[String?] loh_het_intact_upstream_ratio   = check_loh.het_intact_upstream_ratio
+    Array[String?] loh_het_intact_downstream_ratio = check_loh.het_intact_downstream_ratio
+    Array[Float?]  loh_het_intact_upstream_pct     = check_loh.het_intact_upstream_pct
+    Array[Float?]  loh_het_intact_downstream_pct   = check_loh.het_intact_downstream_pct
+    Array[File?]   loh_summary                     = check_loh.loh_summary
 
     # Off-target analysis outputs
     Array[String?] predicted_cut_site   = convert_offtarget_to_bed.expected_cut_site
