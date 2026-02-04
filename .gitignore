@@ -1,18 +1,39 @@
 inputs.test_data*.json
 .wdltest*
+my_inputs
+
+wgs_backlog
+glnexus-test
+6tf_ipsc_wt
+all_Ngn2-KOLF
+
+hifisomatic_resources
+hifi-wdl-resources-v*
+AnnotSV_annotations
+wgs_backlog
 
 *.zip
 *.tar
 *.bam
+*.tbi
+*.bai
+*.gz
 *.bak
+*.gz
 
 Makefile
-.env
 
 tests
 miniwdl_singularity_cache
 miniwdl_download_cache
 miniwdl_call_cache
 miniwdl_test_output
+miniwdl_cache
 
+workflows/snakemake
+
+.env
 .venv
+.env
+.claude
+CLAUDE.md
