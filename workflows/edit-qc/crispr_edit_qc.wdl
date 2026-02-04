@@ -12,6 +12,10 @@ workflow crispr_edit_qc {
     sample_id: "Sample identifier"
     fasta_reads: "FASTA converted reads from upstream workflow (whole genome; mutually exclusive with pre_filtered_reads_fasta)"
     pre_filtered_reads_fasta: "Pre-filtered FASTA already restricted to the edit region (skips minimap2 filtering when provided)"
+    haplotagged_bam: "Optional whole-genome aligned BAM. When provided, reads with high-confidence primary alignments >offtarget_window_bp from the edit site are excluded before edit-part search; unmapped and low-MAPQ reads are retained."
+    haplotagged_bam_index: "Index for haplotagged_bam"
+    offtarget_window_bp: "Distance (bp) from edit target interval within which on-target primary alignments are kept"
+    offtarget_mapq_threshold: "Primary alignments with MAPQ <= this value are kept as low-confidence (not excluded as off-target)"
     crispr_edit_json: "JSON file describing expected CRISPR edit"
     min_identity: "Minimum alignment identity for initial filtering (0-1)"
     coverage_threshold: "Minimum coverage threshold for faithful alignments (0-1)"
@@ -27,9 +31,13 @@ workflow crispr_edit_qc {
     String sample_id
     File? fasta_reads
     File? pre_filtered_reads_fasta
+    File? haplotagged_bam
+    File? haplotagged_bam_index
     File crispr_edit_json
     Float min_identity = 0.80
     Float coverage_threshold = 0.8
+    Int offtarget_window_bp = 500000
+    Int offtarget_mapq_threshold = 20
     Int threads = 8
     Int clip_padding = 100
     Int gap_merge_threshold = 5
@@ -46,11 +54,27 @@ workflow crispr_edit_qc {
     runtime_attributes = runtime_attributes
   }
 
+  # ── Optional off-target read exclusion using whole-genome BAM ─────────────
+  if (!defined(pre_filtered_reads_fasta) && defined(haplotagged_bam)) {
+    call CrisprEditTasks.filter_offtarget_reads {
+      input:
+      haplotagged_bam       = select_first([haplotagged_bam]),
+      haplotagged_bam_index = select_first([haplotagged_bam_index]),
+      crispr_edit_json      = crispr_edit_json,
+      sample_id             = sample_id,
+      window_bp             = offtarget_window_bp,
+      mapq_threshold        = offtarget_mapq_threshold,
+      runtime_attributes    = runtime_attributes
+    }
+  }
+
   # ── Initial read filter: minimap2 (skipped when pre_filtered_reads_fasta is supplied) ─
   if (!defined(pre_filtered_reads_fasta)) {
+    File minimap2_input_fasta = select_first([filter_offtarget_reads.filtered_reads_fasta,
+                                              fasta_reads])
     call CrisprEditTasks.minimap2_align_reads {
       input:
-      fasta_reads = select_first([fasta_reads]),
+      fasta_reads = minimap2_input_fasta,
       parts_query_fasta = create_parts_query_fasta.parts_query_fasta,
       min_identity = min_identity,
       threads = threads,
@@ -60,7 +84,7 @@ workflow crispr_edit_qc {
 
     call CrisprEditTasks.extract_reads {
       input:
-      fasta_reads = select_first([fasta_reads]),
+      fasta_reads = minimap2_input_fasta,
       matched_read_names = minimap2_align_reads.matched_read_names,
       sample_id = sample_id,
       runtime_attributes = runtime_attributes
@@ -155,6 +179,7 @@ workflow crispr_edit_qc {
     File? parts_query_fasta      = create_parts_query_fasta.parts_query_fasta
     File? filtered_reads_fasta   = extract_reads.filtered_reads_fasta
     File? filtered_reads_fastq   = extract_reads.filtered_reads_fastq
+    File? offtarget_filter_counts_tsv = filter_offtarget_reads.counts_tsv
     File? parts_alignment_tsv    = blastn_pass1.parts_alignment_tsv
     File? clipped_reads_fasta    = clip_reads_to_parts.clipped_reads_fasta
 

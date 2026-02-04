@@ -68,6 +68,99 @@ PYEOF
   }
 }
 
+task filter_offtarget_reads {
+  meta {
+    description: "Exclude reads with high-confidence primary alignments far from the edit site (off-target integrations). Keeps on-target (within window_bp of cut site), low-confidence (primary MAPQ<=threshold), and unmapped reads. Emits a gzipped FASTA and a counts report."
+  }
+
+  parameter_meta {
+    haplotagged_bam:       "Whole-genome aligned BAM (expected to include unmapped reads)"
+    haplotagged_bam_index: "Index for aligned BAM"
+    crispr_edit_json:      "JSON file describing CRISPR edit with target region"
+    window_bp:             "Keep high-confidence reads whose primary alignment start is within this many bp of the edit target interval (same chromosome)"
+    mapq_threshold:        "Primary alignments with MAPQ <= this value are treated as low-confidence and kept"
+  }
+
+  input {
+    File haplotagged_bam
+    File haplotagged_bam_index
+    File crispr_edit_json
+    String sample_id
+    Int window_bp = 500000
+    Int mapq_threshold = 20
+    RuntimeAttributes runtime_attributes
+  }
+
+  String out_prefix = "~{sample_id}_ontarget_filter"
+  Float file_size = ceil(size(haplotagged_bam, "GB") * 2)
+
+  command <<<
+    set -euxo pipefail
+
+    python3 <<'PYEOF'
+import json
+with open("~{crispr_edit_json}") as fh:
+    data = json.load(fh)
+edit = data['edits'][0]
+chrom = edit['target']['chr']
+lo = max(1, edit['target']['start'] - ~{window_bp})
+hi = edit['target']['end'] + ~{window_bp}
+with open('region.env', 'w') as fh:
+    fh.write(f"CHR={chrom}\nLO={lo}\nHI={hi}\n")
+PYEOF
+    source region.env
+    echo "On-target window: ${CHR}:${LO}-${HI}"
+
+    # Single pass over primary records: classify and emit keep list + counts.
+    # Flag bit 4 (unmapped) detected via integer arithmetic for portable awk.
+    samtools view -F 2304 ~{haplotagged_bam} \
+      | awk -F'\t' -v OFS='\t' \
+            -v chr="${CHR}" -v lo="${LO}" -v hi="${HI}" -v q=~{mapq_threshold} '
+        {
+          flag = $2 + 0
+          unmapped = (int(flag/4) % 2)
+          if (unmapped)                        { u++; print $1 > "keep.txt"; next }
+          if (($5 + 0) <= q)                   { l++; print $1 > "keep.txt"; next }
+          if ($3 == chr && ($4+0) >= lo && ($4+0) <= hi) { o++; print $1 > "keep.txt"; next }
+          x++
+        }
+        END {
+          print "on_target",            o+0 > "counts.tsv"
+          print "low_confidence",       l+0 > "counts.tsv"
+          print "unmapped",             u+0 > "counts.tsv"
+          print "off_target_excluded",  x+0 > "counts.tsv"
+        }'
+
+    { echo -e "category\tread_count"; cat counts.tsv; } > ~{out_prefix}_counts.tsv
+    cat ~{out_prefix}_counts.tsv
+
+    # Deduplicate keep list (a read may appear on multiple primary records across references
+    # only when split — still a single primary, but guard anyway)
+    LC_ALL=C sort -u keep.txt > keep.uniq.txt
+    echo "Kept unique read names: $(wc -l < keep.uniq.txt)"
+
+    samtools view -h -N keep.uniq.txt -F 2304 ~{haplotagged_bam} \
+      | samtools fasta - \
+      | gzip -c > ~{out_prefix}.fasta.gz
+  >>>
+
+  output {
+    File filtered_reads_fasta = "~{out_prefix}.fasta.gz"
+    File counts_tsv           = "~{out_prefix}_counts.tsv"
+  }
+
+  runtime {
+    docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
+    cpu: 2
+    memory: "8 GB"
+    disk: file_size + " GB"
+    preemptible: runtime_attributes.preemptible_tries
+    maxRetries: runtime_attributes.max_retries
+    awsBatchRetryAttempts: runtime_attributes.max_retries  # !UnknownRuntimeKey
+    zones: runtime_attributes.zones
+  }
+}
+
 task minimap2_align_reads {
   meta {
     description: "Use minimap2 to identify ALL reads containing edit parts"
@@ -1234,6 +1327,30 @@ for read_name, raw in _raw_hits.items():
         hits_by_read[read_name].append((part, strand, t_start, t_end))
     read_lens[read_name] = _raw_slen[read_name]
 
+# Merge overlapping hits to the same (part, strand) per read.
+# The proximity-aware keep filter retains short sub-hits that overlap a
+# full-length hit of the same part (they pass the "near a size-passing hit"
+# condition). Without merging they appear as duplicate part entries in ps,
+# turning a valid HDR signature into an apparent misintegration.
+def _merge_part_hits(hits):
+    by_key = defaultdict(list)
+    for part, strand, t_start, t_end in hits:
+        by_key[(part, strand)].append((t_start, t_end))
+    merged = []
+    for (part, strand), spans in by_key.items():
+        spans.sort()
+        cs, ce = spans[0]
+        for s, e in spans[1:]:
+            if s <= ce:
+                ce = max(ce, e)
+            else:
+                merged.append((part, strand, cs, ce))
+                cs, ce = s, e
+        merged.append((part, strand, cs, ce))
+    return merged
+
+hits_by_read = {r: _merge_part_hits(h) for r, h in hits_by_read.items()}
+
 def get_ps_gs(read_name):
     hits = sorted(hits_by_read[read_name], key=lambda h: h[2])
     ps   = [(h[0], h[1]) for h in hits]
@@ -1518,7 +1635,11 @@ task align_consensus_msa {
     # Parse a consensus FASTA: skip category=partial, RC strand=-, prefix names with label.
     parse_consensus() {
       local fasta=$1 label=$2
-      awk -v label="$label" '
+      # Use first token of label (e.g. czML910 from czML910_Parental_Ngn2-KOLF) as
+      # name prefix so CLUSTAL 30-char name column fits group/reads/category info.
+      local prefix
+      prefix=$(echo "$label" | cut -d_ -f1)
+      awk -v label="$label" -v prefix="$prefix" '
         function rc_char(c) {
           if (c=="A") return "T"; if (c=="T") return "A"
           if (c=="C") return "G"; if (c=="G") return "C"
@@ -1529,7 +1650,7 @@ task align_consensus_msa {
           for (i=length(s); i>=1; i--) r = r rc_char(substr(s,i,1))
           return r
         }
-        function flush(   out) {
+        function flush(   out, short_name) {
           if (name == "" || seq == "") return
           if (cat == "partial") {
             print "  skip partial: " label "_" name > "/dev/stderr"
@@ -1537,13 +1658,18 @@ task align_consensus_msa {
           }
           out = toupper(seq)
           if (strand == "-") out = rc(out)
-          print ">" label "_" name
+          # Name: {prefix}_{cat}{groupnum}[{hap}] [n]
+          # e.g. czML1098_HDR1A [3], czML910_WT2 [17]
+          # misintegration abbreviated to mis; singleton appended as s
+          short_name = prefix "_" cat_short groupnum hap_suffix singleton_suffix "x" nreads ""
+          print ">" short_name
           print out
           kept++
         }
         /^>/ {
           flush()
-          name=""; strand=""; cat=""; seq=""
+          name=""; strand=""; cat=""; cat_short=""; nreads="?"; seq=""
+          groupnum=""; hap_suffix=""; singleton_suffix=""
           header=substr($0, 2)
           if (match(header, /group_[0-9]+(_hap_[A-Za-z0-9_]+)?(_singleton)?/))
             name = substr(header, RSTART, RLENGTH)
@@ -1551,6 +1677,24 @@ task align_consensus_msa {
             strand = substr(header, RSTART+7, 1)
           if (match(header, /category=[A-Za-z_]+/))
             cat = substr(header, RSTART+9, RLENGTH-9)
+          if (match(header, /n_reads=[0-9]+/))
+            nreads = substr(header, RSTART+8, RLENGTH-8)
+          # Extract group number
+          groupnum = name
+          gsub(/^.*group_/, "", groupnum)
+          gsub(/[^0-9].*$/, "", groupnum)
+          # Extract hap letter(s): _hap_A -> A, absent -> ""
+          hap_suffix = ""
+          if (match(name, /_hap_[A-Za-z0-9]+/))
+            hap_suffix = substr(name, RSTART+5, RLENGTH-5)
+          # Singleton marker
+          singleton_suffix = (name ~ /_singleton/) ? "s" : ""
+          # Category abbreviation
+          cat_short = cat
+          if (cat == "misintegration") cat_short = "m"
+          if (cat == "partial") cat_short = "p"
+          if (cat == "HDR") cat_short = "h"
+          if (cat == "WT") cat_short = "w"
           if (name == "" || strand == "") name = ""
           next
         }
@@ -1579,7 +1723,10 @@ task align_consensus_msa {
       printf "CLUSTAL W\n\n%-30s %s\n%-30s %s\n" \
         "${name:0:30}" "$seq" "" "$stars" > "$OUTPUT_ALN"
     else
-      mafft --auto --quiet --clustalout "$INPUT" > "$OUTPUT_ALN"
+      # E-INS-i: generalized affine gap cost (--genafpair) with --ep 0 allows
+      # single large internal gaps cleanly, which is needed when parent WT
+      # sequences lack the ~1kb payload and must gap over it as one block.
+      mafft --ep 0 --genafpair --maxiterate 1000 --quiet --nuc --clustalout "$INPUT" > "$OUTPUT_ALN"
     fi
     echo "${nseq} sequences → ${OUTPUT_ALN}"
   >>>
