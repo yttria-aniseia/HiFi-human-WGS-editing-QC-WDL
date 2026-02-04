@@ -17,6 +17,7 @@ task check_loh {
     expected_cut_site: "Expected cut site in chr:pos format (e.g. chr15:65869582)"
     cut_strand: "Strand of the guide at the cut site (+ or -)"
     window_size: "Window size in bp upstream and downstream of the cut site (default 200000)"
+    chrom_window_size: "Window size in bp for chromosome-wide het bedgraph (default 1000000)"
   }
 
   input {
@@ -28,6 +29,7 @@ task check_loh {
     String expected_cut_site
     String cut_strand
     Int window_size = 200000
+    Int chrom_window_size = 100000
     Int mem_gb = 8
     RuntimeAttributes runtime_attributes
   }
@@ -136,6 +138,67 @@ with open(f"{sample_id}_loh_summary.tsv", "w") as fh:
     fh.write(f"downstream_both_het\t{dn_num}\n")
     fh.write(f"downstream_het_intact_ratio\t{dn_ratio_str}\n")
     fh.write(f"downstream_het_intact_pct\t{dn_pct:.6f}\n")
+
+# ---------------------------------------------------------------------------
+# Chromosome-wide windowed het analysis → bedgraph
+# ---------------------------------------------------------------------------
+chrom_window_size = ~{chrom_window_size}
+
+# Get chromosome length from VCF header (for clean window ends)
+import re
+header_result = subprocess.run(
+    ["bcftools", "view", "-h", joint_vcf],
+    capture_output=True, check=True,
+)
+chrom_len = None
+for line in header_result.stdout.decode().splitlines():
+    if line.startswith("##contig=") and f"ID={chrom}," in line:
+        m = re.search(r"length=(\d+)", line)
+        if m:
+            chrom_len = int(m.group(1))
+            break
+
+print(f"Chromosome {chrom} length: {chrom_len}", file=sys.stderr)
+
+# Dump all variant positions + GTs on the chromosome in one bcftools pass
+query_result = subprocess.run(
+    ["bcftools", "query", "-r", chrom, "-f", "%POS[\t%GT]\n", joint_vcf],
+    capture_output=True, check=True,
+)
+
+def is_het(gt):
+    alleles = gt.replace("|", "/").split("/")
+    return len(set(alleles)) > 1 and "." not in alleles
+
+from collections import defaultdict
+window_parent_het = defaultdict(int)
+window_both_het   = defaultdict(int)
+
+for line in query_result.stdout.decode().splitlines():
+    parts = line.strip().split("\t")
+    if len(parts) < 2:
+        continue
+    pos = int(parts[0])
+    gts = parts[1:]
+    if parent_sample_idx >= len(gts) or sample_idx >= len(gts):
+        continue
+    if is_het(gts[parent_sample_idx]):
+        win = pos // chrom_window_size
+        window_parent_het[win] += 1
+        if is_het(gts[sample_idx]):
+            window_both_het[win] += 1
+
+bedgraph_file = f"{sample_id}_loh_chrom_het.bedgraph"
+with open(bedgraph_file, "w") as fh:
+    for win in sorted(window_parent_het):
+        start = win * chrom_window_size
+        end   = min((win + 1) * chrom_window_size, chrom_len) if chrom_len else (win + 1) * chrom_window_size
+        phet  = window_parent_het[win]
+        bhet  = window_both_het[win]
+        frac  = bhet / phet
+        fh.write(f"{chrom}\t{start}\t{end}\t{frac:.6f}\n")
+
+print(f"Wrote bedgraph: {bedgraph_file} ({len(window_parent_het)} windows)", file=sys.stderr)
 PYEOF
   >>>
 
@@ -145,6 +208,7 @@ PYEOF
     Float  het_intact_upstream_pct     = read_float("~{sample_id}_loh_het_intact_upstream_pct.txt")
     Float  het_intact_downstream_pct   = read_float("~{sample_id}_loh_het_intact_downstream_pct.txt")
     File   loh_summary                 = "~{sample_id}_loh_summary.tsv"
+    File   loh_chrom_bedgraph          = "~{sample_id}_loh_chrom_het.bedgraph"
   }
 
   runtime {
