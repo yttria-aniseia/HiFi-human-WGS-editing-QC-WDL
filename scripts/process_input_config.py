@@ -109,6 +109,23 @@ def main():
                         print(f"  Missing: {hifi_read_path}")
                 new_sample["hifi_reads"] = sample["hifi_reads"]  # Keep original paths
 
+            # Copy precomputed assembly GFA files if provided
+            for gfa_key in ("precomputed_asm_hap1", "precomputed_asm_hap2"):
+                if gfa_key in sample and sample[gfa_key]:
+                    gfa_path = sample[gfa_key]
+                    if os.path.exists(gfa_path):
+                        num = gfa_key[-1]
+                        filename = f"{sample['sample_id']}.asm.bp.hap{num}.p_ctg.gfa"
+                        dest_path = inputs_dir / filename
+                        if dest_path.exists():
+                            print(f"Skipping {gfa_path} -> {dest_path} (already exists)")
+                        else:
+                            print(f"Copying {gfa_path} -> {dest_path}")
+                            shutil.copy2(gfa_path, dest_path)
+                        new_sample[gfa_key] = str(dest_path.absolute())
+                    else:
+                        print(f"Warning: {gfa_key} file not found for {sample['sample_id']}: {gfa_path}")
+
             # Process per-sample expected_edit files
             if "expected_edit" in sample and sample["expected_edit"]:
                 expected_edit_path = sample["expected_edit"]
