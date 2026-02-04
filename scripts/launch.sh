@@ -50,14 +50,14 @@ show_help() {
 	        "sample_id": "sample1",
 	        "hifi_reads": ["/path/to/reads.bam"],
 	        "sex": "MALE",
-	        "affected": false
+	        "affected": false,
+	        "expected_edit": "/path/to/sample1_expected_edits.json"
 	      }
 	    ]
 	  },
 	  "humanwgs_family.ref_map_file": "/path/to/ref_map.tsv",
 	  "humanwgs_family.somatic_map_file": "/path/to/somatic_map.tsv",
-	  "humanwgs_family.tertiary_map_file": "/path/to/tertiary_map.tsv",
-	  "humanwgs_family.expected_edits": "/path/to/expected_edits.json"
+	  "humanwgs_family.tertiary_map_file": "/path/to/tertiary_map.tsv"
 	}
 	EOF
 }
@@ -329,18 +329,17 @@ else
 fi
 
 # Summary
-echo ""
-echo "=== Setup Complete ==="
-echo "Work directory: $WORK_DIR"
-echo "Input files copied to: $WORK_DIR/inputs/"
-echo "Generated config: $WORK_DIR/family.hpc.inputs.json"
-echo "Using workflow from: $REPO_ROOT/workflows/"
-echo "MiniWDL config: $WORK_DIR/miniwdl.cfg"
-echo "Apptainer cache: $ACTUAL_CACHE_DIR"
-echo "Run script: $WORK_DIR/run_workflow.sh"
-echo ""
-
 if [[ "$RUN_WORKFLOW" != "true" ]]; then
+    echo ""
+    echo "=== Setup Complete ==="
+    echo "Work directory: $WORK_DIR"
+    echo "Input files copied to: $WORK_DIR/inputs/"
+    echo "Generated config: $WORK_DIR/family.hpc.inputs.json"
+    echo "Using workflow from: $REPO_ROOT/workflows/"
+    echo "MiniWDL config: $WORK_DIR/miniwdl.cfg"
+    echo "Apptainer cache: $ACTUAL_CACHE_DIR"
+    echo "Run script: $WORK_DIR/run_workflow.sh"
+    echo ""
     echo "To run the workflow manually:"
     echo "  1. Activate your conda environment: conda activate hifi-wgs"
     echo "  2. cd $REPO_ROOT"
@@ -351,8 +350,7 @@ if [[ "$RUN_WORKFLOW" != "true" ]]; then
     echo "  cd $REPO_ROOT"
     echo "  miniwdl run --cfg $WORK_DIR/miniwdl.cfg --dir $WORK_DIR/outputs workflows/family.wdl -i $WORK_DIR/family.hpc.inputs.json --verbose"
     echo ""
+    echo "Monitor progress with:"
+    echo "  tail -f $WORK_DIR/logs/workflow_*.log"
 fi
-
-echo "Monitor progress with:"
-echo "  tail -f $WORK_DIR/logs/workflow_*.log"
 

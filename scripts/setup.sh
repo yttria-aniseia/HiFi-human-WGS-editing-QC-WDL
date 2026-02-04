@@ -33,11 +33,12 @@ fi
 sed -i "s/<prefix>\///g" GRCh38.ref_map.${VERp}.template.tsv
 sed -i "s/<prefix>\///g" GRCh38.tertiary_map.${VERp}.template.tsv
 sed -i "s/<prefix>\///g" GRCh38.somatic_map.${VERp}.template.tsv
-echo "hg002_name	HG002
-hg002_fasta	hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz
-hg002_fasta_index	hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz.fai
-hg002_fasta_bgzf_index	hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz.gzi
-hg002_chain	hifi-wdl-resources-${VER}/hg002/hg002v1.1_to_GRCh38.chain.gz" >> GRCh38.ref_map.${VERp}.template.tsv
+TAB=$'\t'
+echo "hg002_name${TAB}HG002
+hg002_fasta${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz
+hg002_fasta_index${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz.fai
+hg002_fasta_bgzf_index${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz.gzi
+hg002_chain${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1_to_GRCh38.chain.gz" >> GRCh38.ref_map.${VERp}.template.tsv
 
 if [[ $FETCH_EXTRA -eq 1 ]]; then
 	echo "Starting somatic suite download"
