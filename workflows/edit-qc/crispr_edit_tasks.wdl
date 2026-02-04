@@ -1333,7 +1333,7 @@ PYEOF
 
   runtime {
     docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
-    cpu: 1
+    cpu: 2
     memory: "4 GiB"
     disk: "10 GB"
     preemptible: runtime_attributes.preemptible_tries
@@ -1590,8 +1590,8 @@ task align_consensus_msa {
 
   runtime {
     docker: "quay.io/biocontainers/mafft@sha256:b8ccc402a9156868fefda5caa8693f847b47dcc69aae848557f7115850e60790"
-    cpu: 1
-    memory: "8 GiB"
+    cpu: 4
+    memory: "16 GiB"
     disk: "20 GB"
     preemptible: runtime_attributes.preemptible_tries
     maxRetries: runtime_attributes.max_retries

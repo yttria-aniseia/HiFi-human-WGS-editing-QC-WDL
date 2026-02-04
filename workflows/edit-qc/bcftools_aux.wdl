@@ -116,8 +116,8 @@ task count_vcf_variants {
 
   runtime {
     docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
-    cpu: 1
-    memory: "2 GB"
+    cpu: 2
+    memory: "8 GB"
     disk: disk_size + " GB"
     disks: "local-disk " + disk_size + " HDD"
     preemptible: runtime_attributes.preemptible_tries

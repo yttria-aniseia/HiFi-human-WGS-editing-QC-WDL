@@ -571,6 +571,8 @@ workflow humanwgs_family {
         truvari_consistency_tsv = truvari_consistency_small_variants.truvari_consistency_tsv,
         sample_index            = sample_index,
         parent_index            = parent_index,
+        family_merged_vcf       = if parent_index != 999 then truvari_collapse_small_variants.truvari_merge_vcf else None,
+        parent_sample_id        = if parent_index != 999 then resolved_parent_id[sample_index] else None,
         runtime_attributes      = default_runtime_attributes
       }
 
@@ -581,6 +583,8 @@ workflow humanwgs_family {
         truvari_consistency_tsv = truvari_consistency_sv.truvari_consistency_tsv,
         sample_index            = sample_index,
         parent_index            = parent_index,
+        family_merged_vcf       = if parent_index != 999 then truvari_collapse_sv.truvari_merge_vcf else None,
+        parent_sample_id        = if parent_index != 999 then resolved_parent_id[sample_index] else None,
         runtime_attributes      = default_runtime_attributes
       }
 
