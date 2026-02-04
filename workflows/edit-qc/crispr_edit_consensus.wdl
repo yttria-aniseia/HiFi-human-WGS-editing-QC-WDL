@@ -131,5 +131,6 @@ workflow crispr_edit_consensus {
     File parts_alignment_paf = minimap2_remap_parts.parts_alignment_paf
     File genbank_annotations = annotate_consensus_genbank.genbank_annotations
     File annotation_summary = annotate_consensus_genbank.annotation_summary
+    File region_reads_fastq = extract_region_reads.region_reads_fastq
   }
 }
