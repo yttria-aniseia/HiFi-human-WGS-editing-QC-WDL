@@ -223,8 +223,8 @@ task pav {
   >>>
 
   output {
-    File? pav_vcf = "pav_outputs_~{sub(sample_name, "\\.", "_")}/~{sub(sample_name, "\\.", "_")}.vcf.gz"
-    File? pav_vcf_index = "pav_outputs_~{sub(sample_name, "\\.", "_")}/~{sub(sample_name, "\\.", "_")}.vcf.gz.tbi"
+    File? pav_vcf = "pav_outputs_~{sample_name}/~{sub(sample_name, "\\.", "_")}.vcf.gz"
+    File? pav_vcf_index = "pav_outputs_~{sample_name}/~{sub(sample_name, "\\.", "_")}.vcf.gz.tbi"
   }
 
   runtime {

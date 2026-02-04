@@ -256,7 +256,8 @@ workflow humanwgs_family {
   scatter (sample_index in range(length(family.samples))) {
     call Bcftools_aux.bcftools_merge_assembly_align as merge_sv_vcfs_align_assembly {
       input:
-      vcfs = select_all([upstream.large_sv_filtered_vcf[sample_index], select_all(select_first([joint.split_joint_structural_variant_vcfs,upstream.sv_vcf]))[sample_index]]),
+      vcfs        = select_all([upstream.large_sv_filtered_vcf[sample_index], select_all(select_first([joint.split_joint_structural_variant_vcfs,upstream.sv_vcf]))[sample_index]]),
+      sample_id   = sample_id[sample_index],
       out_prefix  = "~{sample_id[sample_index]}.merged_structural_variants",
       runtime_attributes = default_runtime_attributes
     }

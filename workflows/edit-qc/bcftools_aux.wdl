@@ -182,6 +182,9 @@ task bcftools_merge_assembly_align {
     vcfs: {
       name: "VCFs"
     }
+    sample_id: {
+      name: "Sample ID to normalize VCF sample names to before merging"
+    }
     out_prefix: {
       name: "Output VCF name"
     }
@@ -190,7 +193,7 @@ task bcftools_merge_assembly_align {
     }
     merged_vcf: {
       name: "Merged VCF"
-    }  
+    }
     merged_vcf_index: {
       name: "Merged VCF index"
     }
@@ -198,6 +201,7 @@ task bcftools_merge_assembly_align {
 
   input {
     Array[File] vcfs
+    String sample_id
 
     String out_prefix
 
@@ -210,9 +214,11 @@ task bcftools_merge_assembly_align {
 
   command <<<
     set -euo pipefail
+    echo "~{sample_id}" > sample_name.txt
     for vcf in ~{sep=' ' vcfs}; do
-        cp "$vcf" ./
-        bcftools index --tbi "$(basename $vcf)"
+        base="$(basename $vcf)"
+        bcftools reheader -s sample_name.txt "$vcf" -o "$base"
+        bcftools index --tbi "$base"
     done
 
     bcftools --version
