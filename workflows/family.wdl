@@ -584,18 +584,33 @@ workflow humanwgs_family {
         runtime_attributes      = default_runtime_attributes
       }
 
+      # Quality filtering: GQ > 20 and FILTER=PASS, applied per-sample after parent filtering
+      call Bcftools_aux.bcftools_qual_filter as qual_filter_small_variants {
+        input:
+          vcf                = parent_filter_small_variants.filtered_vcf,
+          out_prefix         = "~{sample_id[sample_index]}.small_variants.qual_filtered",
+          runtime_attributes = default_runtime_attributes
+      }
+
+      call Bcftools_aux.bcftools_qual_filter as qual_filter_sv {
+        input:
+          vcf                = parent_filter_sv.filtered_vcf,
+          out_prefix         = "~{sample_id[sample_index]}.sv.qual_filtered",
+          runtime_attributes = default_runtime_attributes
+      }
+
       # AnnotSV after split because we need its tsv conversion
       call Somatic_annotation.annotsv as annotate_parent_filter_sv {
         input:
-        sv_vcf        = parent_filter_sv.filtered_vcf,
-        sv_vcf_index  = parent_filter_sv.filtered_vcf_index,
+        sv_vcf        = qual_filter_sv.filtered_vcf,
+        sv_vcf_index  = qual_filter_sv.filtered_vcf_index,
         annotsv_cache = somatic_map["annotsv_cache"],                             # !FileCoercion
         threads       = 2
       }
 
       call Somatic_annotation.prioritize_small_variants as prioritizeSomatic {
         input:
-        vep_annotated_vcf   = parent_filter_small_variants.filtered_vcf,
+        vep_annotated_vcf   = qual_filter_small_variants.filtered_vcf,
         threads             = 2,
         sample              = family.samples[sample_index].sample_id
       }
@@ -614,6 +629,18 @@ workflow humanwgs_family {
       call Bcftools_aux.count_vcf_variants as count_parent_filtered_sv {
         input:
           vcf = parent_filter_sv.filtered_vcf,
+          runtime_attributes = default_runtime_attributes
+      }
+
+      # Count variants after GQ/VAF filtering
+      call Bcftools_aux.count_vcf_variants as count_qual_filtered_small_variants {
+        input:
+          vcf = qual_filter_small_variants.filtered_vcf,
+          runtime_attributes = default_runtime_attributes
+      }
+      call Bcftools_aux.count_vcf_variants as count_qual_filtered_sv {
+        input:
+          vcf = qual_filter_sv.filtered_vcf,
           runtime_attributes = default_runtime_attributes
       }
 
@@ -669,6 +696,8 @@ workflow humanwgs_family {
       flatten([['quality_filtered_SV_count'], select_first([count_tertiary_sv.variant_count, []])]),
       flatten([['parent_filtered_SNV_count'], select_first([count_parent_filtered_snv.variant_count, []])]),
       flatten([['parent_filtered_SV_count'], select_first([count_parent_filtered_sv.variant_count, []])]),
+      flatten([['qual_filtered_small_variant_count'], select_first([count_qual_filtered_small_variants.variant_count, []])]),
+      flatten([['qual_filtered_SV_count'], select_first([count_qual_filtered_sv.variant_count, []])]),
       flatten([['concerning_SNV_count'], select_first([count_concerning_snv.row_count, []])]),
       flatten([['concerning_SV_count'], select_first([count_concerning_sv.row_count, []])])
   ]
@@ -851,13 +880,20 @@ workflow humanwgs_family {
     Array[File]? parent_filtered_sv_vcf                  = parent_filter_sv.filtered_vcf
     Array[File]? parent_filtered_sv_vcf_index            = parent_filter_sv.filtered_vcf_index
 
+    Array[File]? qual_filtered_small_variant_vcf       = qual_filter_small_variants.filtered_vcf
+    Array[File]? qual_filtered_small_variant_vcf_index = qual_filter_small_variants.filtered_vcf_index
+    Array[File]? qual_filtered_sv_vcf                  = qual_filter_sv.filtered_vcf
+    Array[File]? qual_filtered_sv_vcf_index            = qual_filter_sv.filtered_vcf_index
+
     # Variant count summary stats at each filtering stage
-    Array[String]? stat_quality_filtered_SNV_count  = count_tertiary_snv.variant_count
-    Array[String]? stat_quality_filtered_SV_count   = count_tertiary_sv.variant_count
-    Array[String]? stat_parent_filtered_SNV_count   = count_parent_filtered_snv.variant_count
-    Array[String]? stat_parent_filtered_SV_count    = count_parent_filtered_sv.variant_count
-    Array[String]? stat_concerning_SNV_count         = count_concerning_snv.row_count
-    Array[String]? stat_concerning_SV_count          = count_concerning_sv.row_count
+    Array[String]? stat_quality_filtered_SNV_count              = count_tertiary_snv.variant_count
+    Array[String]? stat_quality_filtered_SV_count               = count_tertiary_sv.variant_count
+    Array[String]? stat_parent_filtered_SNV_count               = count_parent_filtered_snv.variant_count
+    Array[String]? stat_parent_filtered_SV_count                = count_parent_filtered_sv.variant_count
+    Array[String]? stat_qual_filtered_small_variant_count     = count_qual_filtered_small_variants.variant_count
+    Array[String]? stat_qual_filtered_SV_count                = count_qual_filtered_sv.variant_count
+    Array[String]? stat_concerning_SNV_count                    = count_concerning_snv.row_count
+    Array[String]? stat_concerning_SV_count                     = count_concerning_sv.row_count
 
     # Somatic SV calling
     # Array[File] Severus_somatic_vcf                           = select_all(select_first([phased_severus.output_vcf]))
