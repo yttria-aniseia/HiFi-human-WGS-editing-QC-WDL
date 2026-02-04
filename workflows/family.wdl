@@ -163,6 +163,8 @@ workflow humanwgs_family {
         max_reads_per_alignment_chunk = max_reads_per_alignment_chunk,
         single_sample                 = single_sample,
         gpu                           = gpu,
+        precomputed_asm_hap1          = sample.precomputed_asm_hap1,
+        precomputed_asm_hap2          = sample.precomputed_asm_hap2,
         default_runtime_attributes    = default_runtime_attributes
     }
 
