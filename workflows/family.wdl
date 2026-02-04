@@ -650,12 +650,12 @@ workflow humanwgs_family {
       flatten([['sv_BND_count'], downstream.stat_sv_BND_count]),
       flatten([['trgt_genotyped_count'], downstream.stat_trgt_genotyped_count]),
       flatten([['trgt_uncalled_count'], downstream.stat_trgt_uncalled_count]),
-      flatten([['quality_filtered_SNV_count'], select_all(count_tertiary_snv.variant_count)]),
-      flatten([['quality_filtered_SV_count'], select_all(count_tertiary_sv.variant_count)]),
-      flatten([['parent_filtered_SNV_count'], select_all(count_parent_filtered_snv.variant_count)]),
-      flatten([['parent_filtered_SV_count'], select_all(count_parent_filtered_sv.variant_count)]),
-      flatten([['concerning_SNV_count'], select_all(count_concerning_snv.row_count)]),
-      flatten([['concerning_SV_count'], select_all(count_concerning_sv.row_count)])
+      flatten([['quality_filtered_SNV_count'], select_first([count_tertiary_snv.variant_count, []])]),
+      flatten([['quality_filtered_SV_count'], select_first([count_tertiary_sv.variant_count, []])]),
+      flatten([['parent_filtered_SNV_count'], select_first([count_parent_filtered_snv.variant_count, []])]),
+      flatten([['parent_filtered_SV_count'], select_first([count_parent_filtered_sv.variant_count, []])]),
+      flatten([['concerning_SNV_count'], select_first([count_concerning_snv.row_count, []])]),
+      flatten([['concerning_SV_count'], select_first([count_concerning_sv.row_count, []])])
   ]
 
   call Utilities.consolidate_stats {
