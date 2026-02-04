@@ -7,6 +7,7 @@ glnexus-test
 6tf_ipsc_wt
 all_Ngn2-KOLF
 all_KOLF21J
+26apr10_Ngn2-KOLF
 
 hifisomatic_resources
 hifi-wdl-resources-v*
@@ -18,6 +19,7 @@ wgs_backlog
 *.bam
 *.tbi
 *.bai
+*.fai
 *.gz
 *.bak
 *.gz
