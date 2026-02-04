@@ -72,30 +72,38 @@ def main():
             all_exist = all(os.path.exists(hifi_read_path) for hifi_read_path in sample["hifi_reads"])
 
             if all_exist and should_copy_file(dest_path):
-                with tempfile.TemporaryDirectory() as tmpdirname:
-                    tmpdir_path = Path(tmpdirname)
-                    temp_path = tmpdir_path / f"{sample['sample_id']}_hifi_reads_temp.bam"
-                    print(f"Merging {len(sample['hifi_reads'])} HiFi read files -> {dest_path} (stripping tags: fi,ri,fp,rp,ip,pw,HP,PS,PC)")
+                print(f"Merging {len(sample['hifi_reads'])} HiFi read files -> {dest_path} (stripping tags: fi,ri,fp,rp,ip,pw,HP,PS,PC)")
 
-                    # Step 1: Concatenate BAM files
-                    print(f"  Step 1/2: Concatenating BAM files...")
-                    subprocess.run([
-                        "samtools", "cat",
-                        "-o", str(temp_path)
-                    ] + sample["hifi_reads"], check=True)
-
-                    # Step 2: Strip tags using samtools reset
-                    print(f"  Step 2/2: Stripping tags...")
-                    subprocess.run([
+                # Write to a local /tmp file first to avoid slow NFS streaming writes,
+                # then copy to NFS destination in one sequential transfer.
+                # samtools cat stdout is piped directly into samtools reset (no temp BAM on disk).
+                tmp_fd, tmp_out_str = tempfile.mkstemp(dir="/tmp", suffix=".bam")
+                os.close(tmp_fd)
+                tmp_out = Path(tmp_out_str)
+                try:
+                    # Step 1 + 2 (pipelined): cat BAMs from NFS | reset/strip tags -> local /tmp
+                    print(f"  Step 1/2: Streaming cat | reset to local /tmp...")
+                    cat_proc = subprocess.Popen(
+                        ["samtools", "cat"] + sample["hifi_reads"],
+                        stdout=subprocess.PIPE
+                    )
+                    reset_proc = subprocess.run([
                         "samtools", "reset",
                         "--thread", "15",
                         "--remove-tag", "fi,ri,fp,rp,ip,pw,HP,PS,PC",
-                        "-o", str(dest_path),
-                        str(temp_path)
-                    ], check=True)
+                        "-o", str(tmp_out),
+                        "-"
+                    ], stdin=cat_proc.stdout, check=True)
+                    cat_proc.stdout.close()
+                    cat_proc.wait()
+                    if cat_proc.returncode != 0:
+                        raise subprocess.CalledProcessError(cat_proc.returncode, "samtools cat")
 
-                    # Clean up temporary files
-                    temp_path.unlink()
+                    # Step 2/2: Copy finished BAM from local /tmp to NFS destination
+                    print(f"  Step 2/2: Copying local /tmp result to NFS destination...")
+                    shutil.copy2(str(tmp_out), str(dest_path))
+                finally:
+                    tmp_out.unlink(missing_ok=True)
 
                 new_sample["hifi_reads"] = [str(dest_path.absolute())]
             elif all_exist:
