@@ -12,6 +12,10 @@ struct Sample {
   String? father_id
   String? mother_id
   File? expected_edit
+
+  # Pre-computed assembly outputs; when provided, hifiasm is skipped
+  File? precomputed_asm_hap1  # hifiasm hap1 GFA
+  File? precomputed_asm_hap2  # hifiasm hap2 GFA
 }
 
 struct Family {

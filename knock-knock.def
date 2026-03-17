@@ -1,0 +1,97 @@
+Bootstrap: docker
+From: debian:bookworm-slim
+
+%labels
+    Author knock-knock-local
+    Version 0.8.2
+    Description "knock-knock genome editing analysis tool (hits from PyPI)"
+    Source https://github.com/jeffhussmann/knock-knock
+
+%environment
+    export PATH=/opt/conda/bin:$PATH
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    export MAMBA_NO_BANNER=1
+
+%post
+    set -e
+    export PATH=/opt/conda/bin:/usr/local/bin:/usr/bin:/bin:$PATH
+    export MAMBA_ROOT_PREFIX=/opt/conda
+    export MAMBA_NO_BANNER=1
+    apt-get update -qq && \
+        apt-get install -y -q --no-install-recommends \
+            wget ca-certificates bzip2 gcc libc6 libc6-dev libgcc-s1 bash git libc-bin libcrypt1 libtinfo6 ncurses-base && \
+        rm -rf /var/lib/apt/lists/*
+
+    # Install micromamba — standalone binary, no Anaconda/Miniconda license required
+    mkdir -p /usr/local/bin
+    wget -qO- "https://micro.mamba.pm/api/micromamba/linux-64/latest" \
+        | tar -xj -C /usr/local/bin --strip-components=1 bin/micromamba
+    micromamba shell init --shell bash --root-prefix /opt/conda
+
+    micromamba install -y -p /opt/conda -c conda-forge -c bioconda \
+        --channel-priority strict \
+        python=3.12 \
+        minimap2 \
+        samtools \
+        "blast>=2.7" \
+        star \
+        parallel \
+        hdf5 > /dev/null
+
+    # Upgrade pip
+    pip install --upgrade pip
+
+    pip install \
+        "hits>=0.5.1" \
+        anndata \
+        "biopython>=1.86" \
+        "bokeh>=2.4.2" \
+        "h5py>=3.1.0" \
+        "ipywidgets>=7.1.2" \
+        "matplotlib>=2.1.2" \
+        "nbconvert>=6.0.7" \
+        "nbformat>=4.4.0" \
+        "numpy>=1.14.2" \
+        "pandas>=0.22.0" \
+        "Pillow>=5.0.0" \
+        "pysam>=0.14" \
+        "PyYAML>=3.12" \
+        "scipy>=1.16.2" \
+        tables \
+        "tqdm>=4.31.1" \
+        "viennarna>=2.6.4"
+
+    # Install knock-knock from the upstream GitHub repo
+    pip install git+https://github.com/jeffhussmann/knock-knock.git
+
+    # Clean up to reduce image size
+    micromamba clean -a -y
+    pip cache purge
+
+%test
+	echo "=== knock-knock container smoke tests ==="
+	knock-knock --help > /dev/null         && echo "PASS: knock-knock CLI"
+	python -c "
+import knock_knock, hits
+print(f'PASS: knock_knock {knock_knock.__version__}')
+print(f'PASS: hits {hits.__version__}')
+"
+	minimap2 --version                     && echo "PASS: minimap2"
+	samtools --version 2>&1 | head -1      && echo "PASS: samtools"
+	blastn -version    2>&1 | head -1      && echo "PASS: blastn"
+	STAR --version     2>&1 | head -1      && echo "PASS: STAR"
+	parallel --version 2>&1 | head -1      && echo "PASS: GNU parallel"
+
+%help
+    knock-knock: genome editing outcome analysis tool
+    https://github.com/jeffhussmann/knock-knock
+
+    This container installs the 'hits' dependency from PyPI rather than bioconda,
+    working around a known issue with the bioconda-packaged hits version.
+
+    Basic usage:
+        apptainer exec knock-knock.sif knock-knock --help
+        apptainer exec -B /path/to/data:/data knock-knock.sif \
+			knock-knock process-sample <args>

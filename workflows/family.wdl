@@ -16,6 +16,8 @@ import "edit-qc/crispr_edit_qc.wdl" as CrisprEditQC
 import "edit-qc/crispr_edit_consensus.wdl" as CrisprEditConsensus
 import "edit-qc/plot_cnv.wdl" as PlotCNV
 import "edit-qc/offtarget.wdl" as OffTarget
+import "edit-qc/knock_knock.wdl" as KnockKnock
+import "edit-qc/loh.wdl" as LOH
 import "somatic_ports/somatic_annotation.wdl" as Somatic_annotation
 import "somatic_ports/somatic_calling.wdl" as Somatic_calling
 
@@ -161,6 +163,8 @@ workflow humanwgs_family {
         max_reads_per_alignment_chunk = max_reads_per_alignment_chunk,
         single_sample                 = single_sample,
         gpu                           = gpu,
+        precomputed_asm_hap1          = sample.precomputed_asm_hap1,
+        precomputed_asm_hap2          = sample.precomputed_asm_hap2,
         default_runtime_attributes    = default_runtime_attributes
     }
 
@@ -315,7 +319,109 @@ workflow humanwgs_family {
 
 
   #############################################################
-  # 3)                  Tertiary Analysis                     #
+  # 3) Resolve parent IDs (sex-matched) for downstream use   #
+  #############################################################
+
+  # Lookup maps for downstream BAM access by sample ID
+  Map[String, File] bam_files_by_id = as_map(zip(sample_id, downstream.merged_haplotagged_bam))
+  Map[String, File] bam_index_by_id = as_map(zip(sample_id, downstream.merged_haplotagged_bam_index))
+  Map[String, Int] sidx_by_id = as_map(zip(sample_id, range(length(sample_id))))
+
+  scatter (sample_index in range(length(family.samples))) {
+    # Sex matching: prefer same-sex parent, fall back to opposite-sex parent
+    String? resolved_parent_id =
+      if (family.samples[sample_index].sex == "MALE") then
+        if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+        else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
+        else None
+      else if (family.samples[sample_index].sex == "FEMALE") then
+        if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
+        else if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+        else None
+      else
+        if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
+        else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
+        else None
+  }
+
+  #############################################################
+  # 4) Edit-QC consensus, knock-knock, LOH                   #
+  #    No dependency on tertiary or somatic resources.         #
+  #    Uses original phased VCFs for accurate consensus.       #
+  #############################################################
+
+  scatter (sample_index in range(length(family.samples))) {
+    # Consensus-based CRISPR edit annotation - runs only if expected_edit is provided
+    if (defined(family.samples[sample_index].expected_edit)) {
+      call CrisprEditConsensus.crispr_edit_consensus {
+        input:
+          sample_id           = sample_id[sample_index],
+          haplotagged_bam     = downstream.merged_haplotagged_bam[sample_index],
+          haplotagged_bam_index = downstream.merged_haplotagged_bam_index[sample_index],
+          ref_fasta           = ref_map["fasta"],        # !FileCoercion
+          ref_fasta_index     = ref_map["fasta_index"],  # !FileCoercion
+          small_variant_vcf       = downstream.phased_small_variant_vcf[sample_index],
+          small_variant_vcf_index = downstream.phased_small_variant_vcf_index[sample_index],
+          sv_vcf                  = downstream.phased_sv_vcf[sample_index],
+          sv_vcf_index            = downstream.phased_sv_vcf_index[sample_index],
+          crispr_edit_json    = select_first([family.samples[sample_index].expected_edit]),
+          runtime_attributes  = default_runtime_attributes
+      }
+
+      # knock-knock HDR outcome classification
+      call KnockKnock.knock_knock {
+        input:
+          sample_id          = sample_id[sample_index],
+          crispr_edit_json   = select_first([family.samples[sample_index].expected_edit]),
+          region_reads_fastq = crispr_edit_consensus.region_reads_fastq,
+          ref_fasta          = ref_map["fasta"],        # !FileCoercion
+          ref_fasta_index    = ref_map["fasta_index"],  # !FileCoercion
+          runtime_attributes = default_runtime_attributes
+      }
+
+      # Parent consensus annotation - for wild type comparison at same locus
+      if (defined(resolved_parent_id[sample_index])) {
+        Int parent_idx_for_consensus = sidx_by_id[select_first([resolved_parent_id[sample_index]])]
+        call CrisprEditConsensus.crispr_edit_consensus as parent_consensus {
+          input:
+            sample_id           = select_first([resolved_parent_id[sample_index]]),
+            haplotagged_bam     = bam_files_by_id[select_first([resolved_parent_id[sample_index]])],
+            haplotagged_bam_index = bam_index_by_id[select_first([resolved_parent_id[sample_index]])],
+            ref_fasta           = ref_map["fasta"],        # !FileCoercion
+            ref_fasta_index     = ref_map["fasta_index"],  # !FileCoercion
+            small_variant_vcf       = downstream.phased_small_variant_vcf[parent_idx_for_consensus],
+            small_variant_vcf_index = downstream.phased_small_variant_vcf_index[parent_idx_for_consensus],
+            sv_vcf                  = downstream.phased_sv_vcf[parent_idx_for_consensus],
+            sv_vcf_index            = downstream.phased_sv_vcf_index[parent_idx_for_consensus],
+            crispr_edit_json    = select_first([family.samples[sample_index].expected_edit]),
+            runtime_attributes  = default_runtime_attributes
+        }
+      }
+    }
+
+    # LOH check around cut site - needs expected_edit, guidescan cut site, a parent, and joint VCF
+    if (defined(family.samples[sample_index].expected_edit)
+        && defined(convert_offtarget_to_bed.expected_cut_site[sample_index])
+        && defined(resolved_parent_id[sample_index])
+        && defined(merge_small_variant_vcfs.merged_vcf)) {
+      Int parent_idx_for_loh = sidx_by_id[select_first([resolved_parent_id[sample_index]])]
+      call LOH.check_loh {
+        input:
+          sample_id          = sample_id[sample_index],
+          parent_sample_idx  = parent_idx_for_loh,
+          sample_idx         = sample_index,
+          joint_vcf          = select_first([merge_small_variant_vcfs.merged_vcf]),
+          joint_vcf_index    = select_first([merge_small_variant_vcfs.merged_vcf_index]),
+          expected_cut_site  = select_first([convert_offtarget_to_bed.expected_cut_site[sample_index]]),
+          cut_strand         = select_first([convert_offtarget_to_bed.expected_cut_strand[sample_index], "+"]),
+          runtime_attributes = default_runtime_attributes
+      }
+    }
+  }
+
+  #############################################################
+  # 5)                  Tertiary Analysis                     #
+  #    Quality filtering: PASS, GQ>=20, DP>=6, pop-AF<=0.03   #
   #############################################################
 
   if (defined(tertiary_map_file)) {
@@ -333,29 +439,39 @@ workflow humanwgs_family {
       tertiary_map_file          = select_first([tertiary_map_file]),
       default_runtime_attributes = default_runtime_attributes
     }
+
+    # Count per-sample variants after quality filtering (tertiary)
+    scatter (sample_index in range(length(family.samples))) {
+      call Bcftools_aux.count_vcf_variants as count_tertiary_snv {
+        input:
+          vcf = select_first([tertiary_analysis.small_variant_filtered_vcf]),
+          sample_id = sample_id[sample_index],
+          runtime_attributes = default_runtime_attributes
+      }
+      call Bcftools_aux.count_vcf_variants as count_tertiary_sv {
+        input:
+          vcf = select_first([tertiary_analysis.sv_filtered_vcf]),
+          sample_id = sample_id[sample_index],
+          runtime_attributes = default_runtime_attributes
+      }
+    }
   }
 
   #############################################################
-  #                  SEVERUS & ANNOTATION                     #
+  # 6) Annotation & parent filtering                          #
+  #    Consumes tertiary-filtered VCFs (quality-filtered).     #
+  #    NOTE: truvari parent-filtering may partially overlap    #
+  #    with slivar's segregation filters in tertiary, but both #
+  #    are kept intentionally for their distinct outputs.       #
   #############################################################
 
   if (defined(tertiary_map_file) && defined(somatic_map_file)) {
     Map [String, String] somatic_map = read_map(somatic_map_file)
 
-    scatter (sample in family.samples) {
-      Array[File] hifi_reads = sample.hifi_reads
-    }
-
-    ####################################
-    # 3a)      SEVERUS & ANNOTATION    #
-    ####################################
-    Map[String, File] bam_files_by_id = as_map(zip(sample_id, downstream.merged_haplotagged_bam))
-    Map[String, File] bam_index_by_id = as_map(zip(sample_id, downstream.merged_haplotagged_bam_index))
-    Map[String, Int] sidx_by_id = as_map(zip(sample_id, range(length(sample_id))))
-
+    # Normalize tertiary-filtered variants (quality-filtered input)
     call Bcftools_norm.bcftools_norm_split_multiallelic as normalize_small_variants {
       input:
-      input_vcf           = select_first([merge_small_variant_vcfs.merged_vcf, downstream.phased_small_variant_vcf[0]]),
+      input_vcf           = select_first([tertiary_analysis.small_variant_filtered_vcf]),
       ref_fasta           = ref_map["fasta"],
       ref_fasta_index     = ref_map["fasta_index"],
       out_prefix          = "~{family.family_id}.small_variants.normalized",
@@ -364,8 +480,8 @@ workflow humanwgs_family {
 
     call Bcftools_norm.bcftools_norm_split_multiallelic as normalize_sv {
       input:
-      input_vcf           = select_first([merge_sv_vcfs.merged_vcf, downstream.phased_sv_vcf[0]]),
-      input_vcf_index     = select_first([merge_sv_vcfs.merged_vcf_index, downstream.phased_sv_vcf_index[0]]),
+      input_vcf           = select_first([tertiary_analysis.sv_filtered_vcf]),
+      input_vcf_index     = select_first([tertiary_analysis.sv_filtered_vcf_index]),
       ref_fasta           = ref_map["fasta"],
       ref_fasta_index     = ref_map["fasta_index"],
       out_prefix          = "~{family.family_id}.sv.normalized",
@@ -430,107 +546,7 @@ workflow humanwgs_family {
     }
 
     scatter (sample_index in range(length(family.samples))) {
-	    # Consensus-based CRISPR edit annotation - runs only if expected_edit is provided
-	    if (defined(family.samples[sample_index].expected_edit)) {
-	      call CrisprEditConsensus.crispr_edit_consensus {
-	        input:
-	          sample_id = sample_id[sample_index],
-	          haplotagged_bam = downstream.merged_haplotagged_bam[sample_index],
-	          haplotagged_bam_index = downstream.merged_haplotagged_bam_index[sample_index],
-	          ref_fasta = ref_map["fasta"],  # !FileCoercion
-	          ref_fasta_index = ref_map["fasta_index"],  # !FileCoercion
-	          small_variant_vcf = bcftools_split_small_variants.split_vcfs[sample_index],
-	          small_variant_vcf_index = bcftools_split_small_variants.split_vcfs_index[sample_index],
-	          sv_vcf = bcftools_split_sv.split_vcfs[sample_index],
-	          sv_vcf_index = bcftools_split_sv.split_vcfs_index[sample_index],
-	          crispr_edit_json = select_first([family.samples[sample_index].expected_edit]),
-	          runtime_attributes = default_runtime_attributes
-	      }
-	    }
-
-      # Sex matching, if sample is male, we use male parent, if female we use female parent.
-      # if no sex given for sample, use father sample by default.
-      # Generally Prefer father_id if present, else use mother_id if present, else null unless sample is Female
-      String? parent_id =
-      if (family.samples[sample_index].sex == "MALE") then
-      if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
-      else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
-      else None
-      else if (family.samples[sample_index].sex == "FEMALE") then
-      if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
-      else if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
-      else None
-      else
-      if (defined(family.samples[sample_index].father_id)) then select_first([family.samples[sample_index].father_id])
-      else if (defined(family.samples[sample_index].mother_id)) then select_first([family.samples[sample_index].mother_id])
-      else None
-
-      File? parental_bam_find       = if (defined(parent_id)) then bam_files_by_id[select_first([parent_id])] else None
-      File? parental_bam_index_find = if (defined(parent_id)) then bam_index_by_id[select_first([parent_id])] else None
-      # call Somatic_calling.Severus_sv as phased_severus {
-        #   input:
-        #     wt_bam             = downstream.merged_haplotagged_bam[sample_index],
-        #     wt_bam_index       = downstream.merged_haplotagged_bam_index[sample_index],
-        #     parental_bam       = parental_bam_find,
-        #     parental_bam_index = parental_bam_index_find,
-        #     trf_bed            = somatic_map["trf_bed"],                    # !FileCoercion
-        #     phased_vcf         = downstream.phased_small_variant_vcf[sample_index],
-        #     threads            = 32,
-        #     min_supp_reads     = 3,
-        #     PON_tsv            = somatic_map["severus_pon_tsv"]             # !FileCoercion
-      # }
-      # call Somatic_calling.tabix_vcf as tabix_vcf {
-        #  input:
-        #    vcf        = select_first([phased_severus.output_vcf]),
-        #    contig_bed = somatic_map["ref_bed"],                                   # !FileCoercion
-        #    threads    = 2
-      # }
-      # call Somatic_calling.svpack_filter_annotated as svpack_filter_annotated {
-        #  input:
-        #    sv_vcf                 = tabix_vcf.output_vcf,
-        #    population_vcfs        = [somatic_map["control_vcf"]],                 # !FileCoercion
-        #    population_vcf_indices = [somatic_map["control_vcf_index"]],           # !FileCoercion
-        #    gff                    = somatic_map["ref_gff"]                        # !FileCoercion
-      # }
-      # call Somatic_calling.recover_mate_bnd as recover_mate_bnd {
-        #  input:
-        #    sv_vcf_original    = select_first([phased_severus.output_vcf]),
-        #    sv_svpack_filtered = svpack_filter_annotated.output_vcf
-      # }
-      # call Somatic_annotation.annotsv as annotateSeverusSVfiltered {
-        #   input:
-        #     sv_vcf        = select_first([recover_mate_bnd.output_vcf]),
-        #     sv_vcf_index  = select_first([recover_mate_bnd.output_vcf_index]),
-        #     annotsv_cache = somatic_map["annotsv_cache"],                           # !FileCoercion
-        #     threads       = 2
-      # }
-
-
-	    # Consensus-based CRISPR edit annotation - runs only if expected_edit is provided
-	    if (defined(family.samples[sample_index].expected_edit)) {
-	      # Parent consensus annotation - for wild type comparison
-	      if (defined(parent_id)) {
-	        Int parent_idx = sidx_by_id[select_first([parent_id])]
-	        call CrisprEditConsensus.crispr_edit_consensus as parent_consensus {
-	          input:
-	            sample_id = select_first([parent_id]),
-	            haplotagged_bam = bam_files_by_id[select_first([parent_id])],
-	            haplotagged_bam_index = bam_index_by_id[select_first([parent_id])],
-	            ref_fasta = ref_map["fasta"],  # !FileCoercion
-	            ref_fasta_index = ref_map["fasta_index"],  # !FileCoercion
-	            small_variant_vcf = bcftools_split_small_variants.split_vcfs[parent_idx],
-	            small_variant_vcf_index = bcftools_split_small_variants.split_vcfs_index[parent_idx],
-	            sv_vcf = bcftools_split_sv.split_vcfs[parent_idx],
-	            sv_vcf_index = bcftools_split_sv.split_vcfs_index[parent_idx],
-	            crispr_edit_json = select_first([family.samples[sample_index].expected_edit]),
-	            runtime_attributes = default_runtime_attributes
-	        }
-	      }
-      }
-
-
-      # parent filtering
-      Int parent_index = if defined(parent_id) then sidx_by_id[select_first([parent_id])] else 999
+      Int parent_index = if defined(resolved_parent_id[sample_index]) then sidx_by_id[select_first([resolved_parent_id[sample_index]])] else 999
 
       call TruvariParentFilter.filter_parent_variants as parent_filter_small_variants {
         input:
@@ -572,11 +588,30 @@ workflow humanwgs_family {
         annotSV_tsv   = annotate_parent_filter_sv.annotated_tsv,
         threads       = 2
       }
-      # call Somatic_annotation.prioritize_sv_intogen as prioritize_Severus {
-        #   input:
-        #     annotSV_tsv   = annotateSeverusSVfiltered.annotated_tsv,
-        #     threads       = 2
-      # }
+
+      # Count variants after parent filtering
+      call Bcftools_aux.count_vcf_variants as count_parent_filtered_snv {
+        input:
+          vcf = parent_filter_small_variants.filtered_vcf,
+          runtime_attributes = default_runtime_attributes
+      }
+      call Bcftools_aux.count_vcf_variants as count_parent_filtered_sv {
+        input:
+          vcf = parent_filter_sv.filtered_vcf,
+          runtime_attributes = default_runtime_attributes
+      }
+
+      # Count variants after concern annotation
+      call Bcftools_aux.count_tsv_rows as count_concerning_snv {
+        input:
+          tsv = prioritizeSomatic.vep_annotated_filtered_tsv,
+          runtime_attributes = default_runtime_attributes
+      }
+      call Bcftools_aux.count_tsv_rows as count_concerning_sv {
+        input:
+          tsv = prioritize_sv.annotSV_concerning_tsv,
+          runtime_attributes = default_runtime_attributes
+      }
     }
   }
   
@@ -613,7 +648,13 @@ workflow humanwgs_family {
       flatten([['sv_SWAP_count'], downstream.stat_sv_SWAP_count]),
       flatten([['sv_BND_count'], downstream.stat_sv_BND_count]),
       flatten([['trgt_genotyped_count'], downstream.stat_trgt_genotyped_count]),
-      flatten([['trgt_uncalled_count'], downstream.stat_trgt_uncalled_count])
+      flatten([['trgt_uncalled_count'], downstream.stat_trgt_uncalled_count]),
+      flatten([['quality_filtered_SNV_count'], select_first([count_tertiary_snv.variant_count, []])]),
+      flatten([['quality_filtered_SV_count'], select_first([count_tertiary_sv.variant_count, []])]),
+      flatten([['parent_filtered_SNV_count'], select_first([count_parent_filtered_snv.variant_count, []])]),
+      flatten([['parent_filtered_SV_count'], select_first([count_parent_filtered_sv.variant_count, []])]),
+      flatten([['concerning_SNV_count'], select_first([count_concerning_snv.row_count, []])]),
+      flatten([['concerning_SV_count'], select_first([count_concerning_sv.row_count, []])])
   ]
 
   call Utilities.consolidate_stats {
@@ -760,17 +801,10 @@ workflow humanwgs_family {
     Array[File] asm_hap1 = upstream.asm_1
     Array[File] asm_hap2 = upstream.asm_2
 
-    # pav outputs
-    Array[File?] pav_vcf = upstream.pav_vcf
-    Array[File?] pav_vcf_index = upstream.pav_vcf_index
-
     # liftover outputs
     Array[File?] asm_lifted_vcf = upstream.lifted_vcf
     Array[File?] asm_reject_vcf = upstream.reject_vcf
 
-    # LARGE SV FILTER OUTPUTS
-    Array[File?] pav_large_sv_filtered_vcf = upstream.large_sv_filtered_vcf
-    Array[File?] pav_large_sv_filtered_vcf_index = upstream.large_sv_filtered_vcf_index
     # confusing with joint merge
     #Array[File] merged_assembly_aligned_sv_vcf = select_first([merge_sv_vcfs_align_assembly.merged_vcf])
     #Array[File] merged_assembly_aligned_sv_vcf_index = select_first([merge_sv_vcfs_align_assembly.merged_vcf_index])
@@ -800,6 +834,14 @@ workflow humanwgs_family {
     Array[File]? parent_filtered_small_variant_vcf_index = parent_filter_small_variants.filtered_vcf_index
     Array[File]? parent_filtered_sv_vcf                  = parent_filter_sv.filtered_vcf
     Array[File]? parent_filtered_sv_vcf_index            = parent_filter_sv.filtered_vcf_index
+
+    # Variant count summary stats at each filtering stage
+    Array[String]? stat_quality_filtered_SNV_count  = count_tertiary_snv.variant_count
+    Array[String]? stat_quality_filtered_SV_count   = count_tertiary_sv.variant_count
+    Array[String]? stat_parent_filtered_SNV_count   = count_parent_filtered_snv.variant_count
+    Array[String]? stat_parent_filtered_SV_count    = count_parent_filtered_sv.variant_count
+    Array[String]? stat_concerning_SNV_count         = count_concerning_snv.row_count
+    Array[String]? stat_concerning_SV_count          = count_concerning_sv.row_count
 
     # Somatic SV calling
     # Array[File] Severus_somatic_vcf                           = select_all(select_first([phased_severus.output_vcf]))
@@ -847,12 +889,28 @@ workflow humanwgs_family {
     Array[File?] edit_qc_wide_faithful_tsv      = crispr_edit_qc.wide_faithful_table
 
     # CRISPR edit consensus annotation outputs
-    Array[File?]? edit_consensus_genbank          = crispr_edit_consensus.genbank_annotations
-    Array[File?]? edit_consensus_summary          = crispr_edit_consensus.annotation_summary
-    Array[File?]? parent_consensus_genbank       = parent_consensus.genbank_annotations
-    Array[File?]? parent_consensus_summary       = parent_consensus.annotation_summary
+    Array[File?] edit_consensus_genbank          = crispr_edit_consensus.genbank_annotations
+    Array[File?] edit_consensus_summary          = crispr_edit_consensus.annotation_summary
+    Array[File?] parent_consensus_genbank       = parent_consensus.genbank_annotations
+    Array[File?] parent_consensus_summary       = parent_consensus.annotation_summary
+
+    # knock-knock HDR outcome classification outputs
+    Array[File?] knock_knock_outcome_list_txt              = knock_knock.outcome_list_txt
+    Array[File?] knock_knock_edit_lengths_png              = knock_knock.edit_lengths_png
+    Array[File?] knock_knock_outcome_counts_csv            = knock_knock.outcome_counts_csv
+    Array[File?] knock_knock_outcome_diagrams_html_tarball = knock_knock.outcome_diagrams_html_tarball
+    Array[File?] knock_knock_outcome_png_tarball           = knock_knock.outcome_png_tarball
+
+    # LOH analysis outputs
+    Array[String?] loh_het_intact_upstream_ratio   = check_loh.het_intact_upstream_ratio
+    Array[String?] loh_het_intact_downstream_ratio = check_loh.het_intact_downstream_ratio
+    Array[Float?]  loh_het_intact_upstream_pct     = check_loh.het_intact_upstream_pct
+    Array[Float?]  loh_het_intact_downstream_pct   = check_loh.het_intact_downstream_pct
+    Array[File?]   loh_summary                     = check_loh.loh_summary
 
     # Off-target analysis outputs
+    Array[String?] predicted_cut_site   = convert_offtarget_to_bed.expected_cut_site
+    Array[String?] predicted_cut_strand = convert_offtarget_to_bed.expected_cut_strand
     Array[File?] offtarget_kmer_csv   = create_kmer_csv.kmer_csv
     Array[File?] offtarget_csv        = guidescan_enumerate.offtarget_csv
     Array[File?] offtarget_bed        = convert_offtarget_to_bed.offtarget_bed

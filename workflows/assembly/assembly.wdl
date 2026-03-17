@@ -26,6 +26,10 @@ workflow assembly {
 
     Map[String, String] ref_map
 
+    # Pre-computed hifiasm GFA outputs; when provided, hifiasm is skipped
+    File? precomputed_asm_hap1
+    File? precomputed_asm_hap2
+
     RuntimeAttributes default_runtime_attributes
   }
 
@@ -35,16 +39,24 @@ workflow assembly {
       threads            = 32,
       runtime_attributes = default_runtime_attributes
   }
-  call assembly_tasks.hifiasm_assembly as hifiasm_assembly {
-    input:
-      input_fasta        = bam_to_fasta.input_fasta,
-      threads            = 32,
-      runtime_attributes = default_runtime_attributes
+
+  # Skip hifiasm if pre-computed GFAs are provided
+  if (!defined(precomputed_asm_hap1)) {
+    call assembly_tasks.hifiasm_assembly as hifiasm_assembly {
+      input:
+        input_fasta        = bam_to_fasta.input_fasta,
+        threads            = 32,
+        runtime_attributes = default_runtime_attributes
+    }
   }
+
+  File asm_hap1_gfa = select_first([precomputed_asm_hap1, hifiasm_assembly.input_1_asm])
+  File asm_hap2_gfa = select_first([precomputed_asm_hap2, hifiasm_assembly.input_2_asm])
+
   call assembly_tasks.gfa_to_fa as gfa_to_fa {
     input:
-      input_hap1_gfa     = hifiasm_assembly.input_1_asm,
-      input_hap2_gfa     = hifiasm_assembly.input_2_asm,
+      input_hap1_gfa     = asm_hap1_gfa,
+      input_hap2_gfa     = asm_hap2_gfa,
       runtime_attributes = default_runtime_attributes
   }
   # call assembly_tasks.quast as quast {
@@ -85,8 +97,8 @@ workflow assembly {
     File fasta_output = bam_to_fasta.input_fasta
 
     # hifiasm assembly outputs
-    File asm_1 = hifiasm_assembly.input_1_asm
-    File asm_2 = hifiasm_assembly.input_2_asm
+    File asm_1 = asm_hap1_gfa
+    File asm_2 = asm_hap2_gfa
     # File transposed_report = quast.transposed_report
     # File icarus_html       = quast.icarus_html
     # File report_html       = quast.report_html

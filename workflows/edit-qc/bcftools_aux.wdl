@@ -72,6 +72,107 @@ task bcftools_merge {
   }
 }
 
+task count_vcf_variants {
+  meta {
+    description: "Count the number of variant records in a VCF for a specific sample, excluding homozygous-ref and missing genotypes."
+  }
+
+  parameter_meta {
+    vcf: {
+      name: "Input VCF"
+    }
+    sample_id: {
+      name: "Sample to count variants for (if omitted, counts all records)"
+    }
+    runtime_attributes: {
+      name: "Runtime attribute structure"
+    }
+    variant_count: {
+      name: "Number of variant records"
+    }
+  }
+
+  input {
+    File vcf
+    String? sample_id
+    RuntimeAttributes runtime_attributes
+  }
+
+  Int disk_size = ceil(size(vcf, "GB") + 5)
+
+  command <<<
+    set -euo pipefail
+    if [ -n "~{default="" sample_id}" ]; then
+      # Count records where this sample has a non-ref, non-missing genotype
+      bcftools view -H -s "~{sample_id}" -i 'GT!="mis" && GT!="ref"' ~{vcf} | wc -l
+    else
+      bcftools view -H ~{vcf} | wc -l
+    fi
+  >>>
+
+  output {
+    String variant_count = read_string(stdout())
+  }
+
+  runtime {
+    docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
+    cpu: 1
+    memory: "2 GB"
+    disk: disk_size + " GB"
+    disks: "local-disk " + disk_size + " HDD"
+    preemptible: runtime_attributes.preemptible_tries
+    maxRetries: runtime_attributes.max_retries
+    awsBatchRetryAttempts: runtime_attributes.max_retries  # !UnknownRuntimeKey
+    zones: runtime_attributes.zones
+  }
+}
+
+task count_tsv_rows {
+  meta {
+    description: "Count data rows in a TSV file (excluding header)."
+  }
+
+  parameter_meta {
+    tsv: {
+      name: "Input TSV"
+    }
+    runtime_attributes: {
+      name: "Runtime attribute structure"
+    }
+    row_count: {
+      name: "Number of data rows"
+    }
+  }
+
+  input {
+    File tsv
+    RuntimeAttributes runtime_attributes
+  }
+
+  Int disk_size = ceil(size(tsv, "GB") + 5)
+
+  command <<<
+    set -euo pipefail
+    tail -n +2 ~{tsv} | wc -l
+  >>>
+
+  output {
+    String row_count = read_string(stdout())
+  }
+
+  runtime {
+    docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
+    cpu: 1
+    memory: "2 GB"
+    disk: disk_size + " GB"
+    disks: "local-disk " + disk_size + " HDD"
+    preemptible: runtime_attributes.preemptible_tries
+    maxRetries: runtime_attributes.max_retries
+    awsBatchRetryAttempts: runtime_attributes.max_retries  # !UnknownRuntimeKey
+    zones: runtime_attributes.zones
+  }
+}
+
 task bcftools_merge_assembly_align {
   meta {
     description: "Merge multiple assembly and aligned VCFs into a single joint VCF."

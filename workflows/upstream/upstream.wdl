@@ -75,6 +75,10 @@ workflow upstream {
 
     Boolean gpu
 
+    # Pre-computed hifiasm GFA outputs; when provided, hifiasm is skipped
+    File? precomputed_asm_hap1
+    File? precomputed_asm_hap2
+
     RuntimeAttributes default_runtime_attributes
   }
 
@@ -283,9 +287,11 @@ workflow upstream {
   }
   call Assembly.assembly {
       input:
-        hifi_read_bams     = hifi_reads,
-        sample_id          = "~{sample_id}",
-        ref_map            = ref_map,
+        hifi_read_bams       = hifi_reads,
+        sample_id            = "~{sample_id}",
+        ref_map              = ref_map,
+        precomputed_asm_hap1 = precomputed_asm_hap1,
+        precomputed_asm_hap2 = precomputed_asm_hap2,
         default_runtime_attributes = default_runtime_attributes
   }
 

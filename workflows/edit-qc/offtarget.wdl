@@ -196,14 +196,12 @@ task convert_offtarget_to_bed {
     sample_id: "Sample identifier"
     offtarget_csv: "CSV file from guidescan enumerate"
     crispr_edit_json: "JSON file describing expected CRISPR edit"
-    region_extend: "Base pairs to extend region in both directions (plus gRNA length in strand direction)"
   }
 
   input {
     String sample_id
     File offtarget_csv
     File crispr_edit_json
-    Int region_extend = 20
     RuntimeAttributes runtime_attributes
   }
 
@@ -227,7 +225,8 @@ for edit in edit_data.get('edits', []):
     end = target.get('end', 0)
     on_target_regions.append((chrom, start, end))
 
-# Read CSV and convert to BED
+# Read CSV, convert to BED, and find best match for expected cut site
+best_match = None
 with open("~{offtarget_csv}", 'r') as infile, \
      open("~{sample_id}-offtarget.bed", 'w') as outfile:
 
@@ -238,10 +237,18 @@ with open("~{offtarget_csv}", 'r') as infile, \
         pos = int(row.get('match_position', 0))
         strand = row.get('match_strand', '+')
         sequence = row.get('match_sequence', '')
-        distance = row.get('match_distance', '0')
+        distance_str = row.get('match_distance', '0')
+        try:
+            distance = float(distance_str)
+        except ValueError:
+            distance = float('inf')
+
+        # Track best match (minimum distance) for expected cut site
+        if best_match is None or distance < best_match['distance']:
+            best_match = {'chrom': chrom, 'pos': pos, 'strand': strand, 'distance': distance}
 
         # Skip on-target matches (distance 0 and overlapping expected edit)
-        if distance == '0':
+        if distance == 0:
             is_on_target = False
             for target_chr, target_start, target_end in on_target_regions:
                 if chrom == target_chr and target_start <= pos <= target_end:
@@ -250,29 +257,46 @@ with open("~{offtarget_csv}", 'r') as infile, \
             if is_on_target:
                 continue
 
-        # Calculate BED start and end based on strand
-        # Extend by region_extend bp in both directions, plus gRNA length (20bp) in strand direction
-        region_extend = ~{region_extend}
+        # Calculate BED start and end (0-based): adjust match_position by -1
         grna_length = 20
+        pos_0 = pos - 1
         if strand == '-':
-            # For - strand: extend region_extend + gRNA length upstream (toward lower coordinates)
-            start = pos - region_extend - grna_length
-            end = pos + region_extend
+            start = pos_0 - grna_length
+            end = pos_0
         else:
-            # For + strand: extend region_extend + gRNA length downstream (toward higher coordinates)
-            start = pos - region_extend
-            end = pos + region_extend + grna_length
+            start = pos_0
+            end = pos_0 + grna_length
 
         # Ensure start is not negative
         start = max(0, start)
 
         # Write BED line (tab-delimited)
-        outfile.write(f"{chrom}\t{start}\t{end}\t{sequence}\t{distance}\t{strand}\n")
+        outfile.write(f"{chrom}\t{start}\t{end}\t{sequence}\t{distance_str}\t{strand}\n")
+
+# Compute expected cut site from best match (minimum mismatches)
+# For + strand: cut site = match_position + 17
+# For - strand: cut site = match_position + 3
+if best_match:
+    bm_strand = best_match['strand']
+    cut_offset = 17 if bm_strand == '+' else 3
+    cut_pos = best_match['pos'] + cut_offset
+    expected_cut_site = f"{best_match['chrom']}:{cut_pos}"
+    expected_cut_strand = bm_strand
+else:
+    expected_cut_site = ""
+    expected_cut_strand = ""
+
+with open("~{sample_id}_expected_cut_site.txt", 'w') as f:
+    f.write(expected_cut_site)
+with open("~{sample_id}_expected_cut_strand.txt", 'w') as f:
+    f.write(expected_cut_strand)
 EOF
   >>>
 
   output {
     File offtarget_bed = "~{sample_id}-offtarget.bed"
+    String expected_cut_site = read_string("~{sample_id}_expected_cut_site.txt")
+    String expected_cut_strand = read_string("~{sample_id}_expected_cut_strand.txt")
   }
 
   runtime {
