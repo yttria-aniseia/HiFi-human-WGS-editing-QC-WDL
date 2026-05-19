@@ -435,6 +435,216 @@ task blastn_remap_parts {
 
 
 
+task normalize_read_orientation {
+  meta {
+    description: "Canonicalize per-read orientation against edit parts so forward- and reverse-sequenced reads of the same allele collapse into a single structural group"
+  }
+
+  parameter_meta {
+    filtered_reads_fasta:   "Uncompressed FASTA with reads overlapping edit parts"
+    parts_alignment_tsv:    "Pass-1 blastn tabular output (from blastn_remap_parts)"
+    min_part_hit_bp:        "Minimum query-span (bp) for a blastn hit to be counted; filters repetitive short matches"
+  }
+
+  input {
+    File filtered_reads_fasta
+    File parts_alignment_tsv
+    String sample_id
+    Int min_part_hit_bp = 100
+    RuntimeAttributes runtime_attributes
+  }
+
+  command <<<
+    set -euxo pipefail
+
+    python3 <<'PYEOF'
+import sys
+from collections import defaultdict
+
+# ── Columns (0-based): ────────────────────────────────────────────────────────
+#  0 qseqid  1 qlen   2 qstart  3 qend   4 sseqid   5 slen
+#  6 sstart  7 send   8 nident  9 mismatch 10 gapopen 11 gaps
+# 12 length 13 sstrand 14 bitscore
+# ─────────────────────────────────────────────────────────────────────────────
+
+MIN_HIT = ~{min_part_hit_bp}
+PART_SUFFIXES = ("_left_HA", "_right_HA", "_payload")
+
+# Per-read accumulator: {read: {strand: [n_match, ...]}, 'hits': [(t_start, strand), ...]}
+from collections import defaultdict
+
+class ReadInfo:
+    __slots__ = ('bp_pos', 'bp_neg', 'n_pos', 'n_neg', 'hits')
+    def __init__(self):
+        self.bp_pos = 0
+        self.bp_neg = 0
+        self.n_pos  = 0
+        self.n_neg  = 0
+        self.hits   = []  # (t_start, strand)
+
+read_info = defaultdict(ReadInfo)
+all_read_names = []  # preserve encounter order for no-hit reads
+
+rows = []
+with open("~{parts_alignment_tsv}") as fh:
+    for ln in fh:
+        if not ln.strip() or ln.startswith('#'):
+            rows.append(ln)
+            continue
+        f = ln.rstrip('\n').split('\t')
+        if len(f) < 15:
+            rows.append(ln)
+            continue
+        rows.append(f)
+
+        qseqid = f[0]
+        if not any(qseqid.endswith(s) for s in PART_SUFFIXES):
+            continue
+        try:
+            qstart  = int(f[2])
+            qend    = int(f[3])
+            sseqid  = f[4]
+            slen    = int(f[5])
+            sstart  = int(f[6])
+            send    = int(f[7])
+            nident  = int(f[8])
+            sstrand = f[13]
+        except (ValueError, IndexError):
+            continue
+
+        if abs(qend - qstart) < MIN_HIT:
+            continue
+
+        ri = read_info[sseqid]
+        t_start = min(sstart, send)
+        if sstrand == 'plus':
+            ri.bp_pos += nident
+            ri.n_pos  += 1
+        else:
+            ri.bp_neg += nident
+            ri.n_neg  += 1
+        ri.hits.append((t_start, sstrand))
+
+# ── Decision per read ─────────────────────────────────────────────────────────
+flip_set = set()
+decisions = {}  # read_name -> (n_pos, n_neg, bp_pos, bp_neg, decision, rule)
+
+for rname, ri in read_info.items():
+    bp_pos, bp_neg = ri.bp_pos, ri.bp_neg
+    n_pos,  n_neg  = ri.n_pos,  ri.n_neg
+    if bp_pos > bp_neg:
+        decision, rule = 'kept',    'majority'
+    elif bp_neg > bp_pos:
+        decision, rule = 'flipped', 'majority'
+    else:
+        # tie-break by leftmost hit
+        leftmost = min(ri.hits, key=lambda h: h[0])
+        if leftmost[1] == 'plus':
+            decision, rule = 'kept',    'tiebreak_leftmost'
+        else:
+            decision, rule = 'flipped', 'tiebreak_leftmost'
+    decisions[rname] = (n_pos, n_neg, bp_pos, bp_neg, decision, rule)
+    if decision == 'flipped':
+        flip_set.add(rname)
+
+# ── Reverse-complement helper ─────────────────────────────────────────────────
+_COMP = str.maketrans(
+    'ACGTRYSWKMBDHVNacgtryswkmbdhvn',
+    'TGCAYRSWMKVHDBNtgcayrswmkvhdbn'
+)
+
+def revcomp(seq):
+    return seq.translate(_COMP)[::-1].upper()
+
+# ── Stream FASTA, flip as needed ──────────────────────────────────────────────
+out_fasta  = "~{sample_id}_normalized.fasta"
+seen_reads = set()
+
+with open("~{filtered_reads_fasta}") as inf, open(out_fasta, 'w') as outf:
+    header = None
+    seq_lines = []
+    def flush(header, seq_lines):
+        if header is None:
+            return
+        rname = header[1:].split()[0]
+        seen_reads.add(rname)
+        seq = ''.join(seq_lines).upper()
+        if rname in flip_set:
+            seq = revcomp(seq)
+        outf.write(header + '\n')
+        outf.write(seq + '\n')
+    for line in inf:
+        line = line.rstrip('\n')
+        if line.startswith('>'):
+            flush(header, seq_lines)
+            header = line
+            seq_lines = []
+        else:
+            seq_lines.append(line)
+    flush(header, seq_lines)
+
+# Add no_hit reads to decisions table
+for rname in seen_reads:
+    if rname not in decisions:
+        decisions[rname] = (0, 0, 0, 0, 'kept', 'no_hits')
+
+# ── Rewrite TSV ───────────────────────────────────────────────────────────────
+out_tsv = "~{sample_id}_normalized_parts.tsv"
+with open(out_tsv, 'w') as outf:
+    for item in rows:
+        if isinstance(item, str):
+            outf.write(item if item.endswith('\n') else item + '\n')
+            continue
+        f = item
+        sseqid = f[4]
+        if sseqid in flip_set:
+            slen   = int(f[5])
+            sstart = int(f[6])
+            send   = int(f[7])
+            new_sstart = slen - send   + 1
+            new_send   = slen - sstart + 1
+            f = f[:]
+            f[6] = str(new_sstart)
+            f[7] = str(new_send)
+            f[13] = 'minus' if f[13] == 'plus' else 'plus'
+        outf.write('\t'.join(f) + '\n')
+
+# ── Normalization log ─────────────────────────────────────────────────────────
+out_log = "~{sample_id}_normalization_log.tsv"
+header_cols = ['read_name', 'n_hits_pos', 'n_hits_neg',
+               'bp_match_pos', 'bp_match_neg', 'decision', 'rule']
+with open(out_log, 'w') as outf:
+    outf.write('\t'.join(header_cols) + '\n')
+    for rname in sorted(decisions):
+        n_pos, n_neg, bp_pos, bp_neg, decision, rule = decisions[rname]
+        outf.write('\t'.join([rname, str(n_pos), str(n_neg),
+                               str(bp_pos), str(bp_neg), decision, rule]) + '\n')
+
+n_flipped = len(flip_set)
+n_total   = len(decisions)
+print(f"normalize_read_orientation: {n_flipped}/{n_total} reads flipped", flush=True)
+PYEOF
+  >>>
+
+  output {
+    File normalized_reads_fasta        = "~{sample_id}_normalized.fasta"
+    File normalized_parts_alignment_tsv = "~{sample_id}_normalized_parts.tsv"
+    File normalization_log             = "~{sample_id}_normalization_log.tsv"
+  }
+
+  runtime {
+    docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
+    cpu: 1
+    memory: "8 GiB"
+    disk: "20 GB"
+    preemptible: runtime_attributes.preemptible_tries
+    maxRetries: runtime_attributes.max_retries
+    awsBatchRetryAttempts: runtime_attributes.max_retries  # !UnknownRuntimeKey
+    zones: runtime_attributes.zones
+  }
+}
+
+
 task clip_reads_to_parts {
   meta {
     description: "Clip filtered reads to the union of all blastn part-hit spans plus padding"
