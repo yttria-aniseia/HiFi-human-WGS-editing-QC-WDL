@@ -104,7 +104,7 @@ task bcftools_split_for_truvari {
     bcftools +split -W \
       -Oz \
       -o truvari_merge_split \
-      -e 'GT=".|." || GT="./." || GT="." || GT="ref"'
+      -e 'GT=".|." || GT="./." || GT="." || GT="./0" || GT="0/." || GT="ref"'
 
 		for file in truvari_merge_split/*.vcf.gz; do
     	mv "$file" "${file%.vcf.gz}~{out_suffix}.vcf.gz"
@@ -234,6 +234,12 @@ task filter_parent_variants {
     parent_index: {
       name: "Parent index in consistency table"
     }
+    family_merged_vcf: {
+      name: "Full multi-sample merged VCF (pre-split); when provided along with parent_sample_id, parent genotype fields are added as INFO annotations"
+    }
+    parent_sample_id: {
+      name: "Parent sample ID to extract from family_merged_vcf for parent genotype annotations"
+    }
     runtime_attributes: {
       name: "Runtime attribute structure"
     }
@@ -251,12 +257,14 @@ task filter_parent_variants {
     File truvari_consistency_tsv
     Int sample_index
     Int parent_index = 999
+    File? family_merged_vcf
+    String? parent_sample_id
     RuntimeAttributes runtime_attributes
   }
 
   Int threads = 4
   Int mem_gb = 8
-  Int disk_size = ceil(size(sample_vcf, "GB") * 2 + size(truvari_consistency_tsv, "GB") + 20)
+  Int disk_size = ceil(size(sample_vcf, "GB") * 2 + size(truvari_consistency_tsv, "GB") + size(family_merged_vcf, "GB") + 20)
   String filtered_consistency_tsv = sub(basename(truvari_consistency_tsv), "\\.tsv$", "") + ".parent_filtered.tsv"
   String filtered_vcf_file = sub(basename(sample_vcf), "\\.vcf.gz$", "") + ".parent_filtered.vcf.gz"
   String filtered_vcf_index_file = "~{filtered_vcf_file}.tbi"
@@ -291,6 +299,32 @@ EOF
         -h truvari_consistency.hdr \
         -Ob \
         ~{sample_vcf} | bcftools filter -i "FLAG>0" -Ob | bcftools sort -Oz -Wtbi -o ~{filtered_vcf_file}
+
+      # Annotate with parent genotype fields if family merged VCF and parent sample ID are available
+      if [[ -n "~{default="" parent_sample_id}" && -n "~{default="" family_merged_vcf}" ]]; then
+        cat > parent_info.hdr <<-'EOF'
+##INFO=<ID=parent_GT,Number=1,Type=String,Description="Genotype of parent sample at this site">
+##INFO=<ID=parent_AD,Number=.,Type=String,Description="Allelic depths of parent sample (FORMAT/AD)">
+##INFO=<ID=parent_AN,Number=1,Type=Integer,Description="Parent total allele number">
+##INFO=<ID=parent_AC,Number=.,Type=Integer,Description="Parent alt allele count">
+EOF
+
+        bcftools view -s "~{default="" parent_sample_id}" "~{default="" family_merged_vcf}" | \
+          bcftools +fill-tags -- -t AN,AC | \
+          bcftools sort --max-mem "~{mem_gb/2}G" | \
+          bcftools query -f '%CHROM\t%POS\t%REF\t%ALT\t[%GT]\t[%AD]\t%AN\t%AC\n' | \
+          bgzip > parent_annotations.tsv.gz
+        tabix -s1 -b2 -e2 parent_annotations.tsv.gz
+
+        bcftools annotate \
+          -a parent_annotations.tsv.gz \
+          -c 'CHROM,POS,REF,ALT,INFO/parent_GT,INFO/parent_AD,INFO/parent_AN,INFO/parent_AC' \
+          -h parent_info.hdr \
+          ~{filtered_vcf_file} \
+          -Oz -Wtbi -o tmp_parent_annotated.vcf.gz
+        mv tmp_parent_annotated.vcf.gz ~{filtered_vcf_file}
+        mv tmp_parent_annotated.vcf.gz.tbi ~{filtered_vcf_index_file}
+      fi
     else
       # No parent specified, copy original VCF
       cp ~{sample_vcf} ~{filtered_vcf_file}

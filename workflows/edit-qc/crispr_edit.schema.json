@@ -79,35 +79,43 @@
                 "type": "string",
                 "description": "right homology arm sequence"
               },
+              "donor_context_before": {
+                "type": "string",
+                "description": "optional donor sequence upstream of left_ha (e.g. plasmid backbone 5' of the HDR cassette); not used for edit validation but included when constructing the full donor sequence for knock-knock"
+              },
+              "donor_context_after": {
+                "type": "string",
+                "description": "optional donor sequence downstream of right_ha (e.g. plasmid backbone 3' of the HDR cassette); not used for edit validation but included when constructing the full donor sequence for knock-knock"
+              },
               "payload_components": {
                 "type": "array",
                 "items": {
                   "$ref": "#/$defs/NamedSequence"
                 }
-              },
-              "required": [
-                "type",
-                "strand",
-                "guide",
-                "left_ha",
-                "payload",
-                "right_ha"
-              ]
-            }
-          },
-          "required": [
-            "id",
-            "target",
-            "edit"
-          ]
-        }
+              }
+            },
+            "required": [
+              "type",
+              "strand",
+              "guide",
+              "left_ha",
+              "payload",
+              "right_ha"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "target",
+          "edit"
+        ]
       }
-    },
-    "required": [
-      "ref",
-      "edits"
-    ]
+    }
   },
+  "required": [
+    "ref",
+    "edits"
+  ],
   "$defs": {
     "NamedSequence": {
       "type": "object",

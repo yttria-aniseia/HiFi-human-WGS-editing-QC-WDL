@@ -223,6 +223,15 @@ def parse_genbank_to_crispr_json(genbank_path: str, edit_id: str,
     right_ha_seq = get_feature_sequence(right_ha_feature, record)
     payload_seq = get_feature_sequence(payload_feature, record)
 
+    # Extract donor context (e.g. plasmid backbone) flanking the HDR cassette.
+    # Taken linearly from the GenBank record: everything before left_ha and
+    # after right_ha. For circular plasmids exported with backbone at the
+    # record boundaries (the common case), this captures the full backbone.
+    lha_start = int(left_ha_feature.location.start)
+    rha_end = int(right_ha_feature.location.end)
+    donor_context_before = str(record.seq[:lha_start])
+    donor_context_after = str(record.seq[rha_end:])
+
     # Find payload components
     payload_start = int(payload_feature.location.start)
     payload_end = int(payload_feature.location.end)
@@ -262,6 +271,11 @@ def parse_genbank_to_crispr_json(genbank_path: str, edit_id: str,
             }
         ]
     }
+
+    if donor_context_before:
+        crispr_json['edits'][0]['edit']['donor_context_before'] = donor_context_before
+    if donor_context_after:
+        crispr_json['edits'][0]['edit']['donor_context_after'] = donor_context_after
 
     # Add optional symbol if available
     if gene_info.get('symbol'):
@@ -328,6 +342,11 @@ Example usage:
         print(f"  Gene: {crispr_json['edits'][0]['target']['symbol']}", file=sys.stderr)
     print(f"  Payload components: {len(crispr_json['edits'][0]['edit'].get('payload_components', []))}",
           file=sys.stderr)
+    edit_out = crispr_json['edits'][0]['edit']
+    if 'donor_context_before' in edit_out or 'donor_context_after' in edit_out:
+        print(f"  Donor context: {len(edit_out.get('donor_context_before', ''))} bp before, "
+              f"{len(edit_out.get('donor_context_after', ''))} bp after",
+              file=sys.stderr)
 
 
 if __name__ == '__main__':

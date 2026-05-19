@@ -116,8 +116,8 @@ task count_vcf_variants {
 
   runtime {
     docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
-    cpu: 1
-    memory: "2 GB"
+    cpu: 2
+    memory: "8 GB"
     disk: disk_size + " GB"
     disks: "local-disk " + disk_size + " HDD"
     preemptible: runtime_attributes.preemptible_tries
@@ -162,8 +162,83 @@ task count_tsv_rows {
 
   runtime {
     docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
-    cpu: 1
-    memory: "2 GB"
+    cpu: 2
+    memory: "8 GB"
+    disk: disk_size + " GB"
+    disks: "local-disk " + disk_size + " HDD"
+    preemptible: runtime_attributes.preemptible_tries
+    maxRetries: runtime_attributes.max_retries
+    awsBatchRetryAttempts: runtime_attributes.max_retries  # !UnknownRuntimeKey
+    zones: runtime_attributes.zones
+  }
+}
+
+task bcftools_qual_filter {
+  meta {
+    description: "Filter variants to FILTER=PASS. Small variants and sawfish SVs additionally require GQ>=20 and, if AD is present, VAF>0.1. PAV assembly SVs (identified by presence of INFO/COV_PROP) skip the GQ filter and instead require all haplotype COV_PROP values >0.1."
+  }
+
+  parameter_meta {
+    vcf: { name: "Input VCF" }
+    out_prefix: { name: "Output file prefix" }
+    runtime_attributes: { name: "Runtime attribute structure" }
+    filtered_vcf: { name: "Filtered VCF" }
+    filtered_vcf_index: { name: "Filtered VCF index" }
+  }
+
+  input {
+    File vcf
+    String out_prefix
+    RuntimeAttributes runtime_attributes
+  }
+
+  Int disk_size = ceil(size(vcf, "GB") * 2 + 10)
+
+  command <<<
+    set -euo pipefail
+
+    bcftools --version
+
+    # PAV assembly SVs carry INFO/COV_PROP typed as String in their VCF header.
+    # Reheader to Float (or add the tag as Float if absent) so bcftools can
+    # evaluate MIN(INFO/COV_PROP) numerically.  Records without the tag remain
+    # absent (compared as ".") in either case.
+    if bcftools view -h ~{vcf} | grep -q '##INFO=<ID=COV_PROP'; then
+      bcftools view -h ~{vcf} | \
+        sed 's|##INFO=<ID=COV_PROP,Number=\.,Type=String|##INFO=<ID=COV_PROP,Number=.,Type=Float|' \
+        > fixed_header.txt
+    else
+      bcftools view -h ~{vcf} | grep -v '^#CHROM' > fixed_header.txt
+      echo '##INFO=<ID=COV_PROP,Number=.,Type=Float,Description="Assembly haplotype coverage proportion (PAV)">' \
+        >> fixed_header.txt
+      bcftools view -h ~{vcf} | grep '^#CHROM' >> fixed_header.txt
+    fi
+    bcftools reheader -h fixed_header.txt -o reheaded.vcf.gz ~{vcf}
+    bcftools index --tbi reheaded.vcf.gz
+
+    # Unified filter:
+    #   Non-PAV (INFO/COV_PROP absent): require GQ>=20; if AD present, VAF>0.1.
+    #   PAV (INFO/COV_PROP present):    require MIN(COV_PROP)>0.1; no GQ check.
+    bcftools view \
+      --output-type z \
+      -i '(FILTER="PASS" || FILTER=".") && (
+        (INFO/COV_PROP="." && GQ>=20 && (AD[0:0]="." || (AD[0:0]+AD[0:1])=0 || AD[0:1]/(AD[0:0]+AD[0:1]) > 0.1)) ||
+        (INFO/COV_PROP!="." && MIN(INFO/COV_PROP) > 0.1)
+      )' \
+      reheaded.vcf.gz \
+      -o ~{out_prefix}.vcf.gz
+    bcftools index --tbi ~{out_prefix}.vcf.gz
+  >>>
+
+  output {
+    File filtered_vcf       = "~{out_prefix}.vcf.gz"
+    File filtered_vcf_index = "~{out_prefix}.vcf.gz.tbi"
+  }
+
+  runtime {
+    docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
+    cpu: 4
+    memory: "8 GB"
     disk: disk_size + " GB"
     disks: "local-disk " + disk_size + " HDD"
     preemptible: runtime_attributes.preemptible_tries
@@ -182,6 +257,9 @@ task bcftools_merge_assembly_align {
     vcfs: {
       name: "VCFs"
     }
+    sample_id: {
+      name: "Sample ID to normalize VCF sample names to before merging"
+    }
     out_prefix: {
       name: "Output VCF name"
     }
@@ -190,7 +268,7 @@ task bcftools_merge_assembly_align {
     }
     merged_vcf: {
       name: "Merged VCF"
-    }  
+    }
     merged_vcf_index: {
       name: "Merged VCF index"
     }
@@ -198,6 +276,7 @@ task bcftools_merge_assembly_align {
 
   input {
     Array[File] vcfs
+    String sample_id
 
     String out_prefix
 
@@ -210,9 +289,11 @@ task bcftools_merge_assembly_align {
 
   command <<<
     set -euo pipefail
+    echo "~{sample_id}" > sample_name.txt
     for vcf in ~{sep=' ' vcfs}; do
-        cp "$vcf" ./
-        bcftools index --tbi "$(basename $vcf)"
+        base="$(basename $vcf)"
+        bcftools reheader -s sample_name.txt "$vcf" -o "$base"
+        bcftools index --tbi "$base"
     done
 
     bcftools --version

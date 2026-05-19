@@ -13,6 +13,7 @@ import "edit-qc/bcftools_aux.wdl" as Bcftools_aux
 import "edit-qc/bcftools_norm.wdl" as Bcftools_norm
 import "edit-qc/truvari_parent_filter.wdl" as TruvariParentFilter
 import "edit-qc/crispr_edit_qc.wdl" as CrisprEditQC
+import "edit-qc/crispr_edit_tasks.wdl" as CrisprEditTasks
 import "edit-qc/crispr_edit_consensus.wdl" as CrisprEditConsensus
 import "edit-qc/plot_cnv.wdl" as PlotCNV
 import "edit-qc/offtarget.wdl" as OffTarget
@@ -255,7 +256,8 @@ workflow humanwgs_family {
   scatter (sample_index in range(length(family.samples))) {
     call Bcftools_aux.bcftools_merge_assembly_align as merge_sv_vcfs_align_assembly {
       input:
-      vcfs = select_all([upstream.large_sv_filtered_vcf[sample_index], select_all(select_first([joint.split_joint_structural_variant_vcfs,upstream.sv_vcf]))[sample_index]]),
+      vcfs        = select_all([upstream.large_sv_filtered_vcf[sample_index], select_all(select_first([joint.split_joint_structural_variant_vcfs,upstream.sv_vcf]))[sample_index]]),
+      sample_id   = sample_id[sample_index],
       out_prefix  = "~{sample_id[sample_index]}.merged_structural_variants",
       runtime_attributes = default_runtime_attributes
     }
@@ -323,8 +325,6 @@ workflow humanwgs_family {
   #############################################################
 
   # Lookup maps for downstream BAM access by sample ID
-  Map[String, File] bam_files_by_id = as_map(zip(sample_id, downstream.merged_haplotagged_bam))
-  Map[String, File] bam_index_by_id = as_map(zip(sample_id, downstream.merged_haplotagged_bam_index))
   Map[String, Int] sidx_by_id = as_map(zip(sample_id, range(length(sample_id))))
 
   scatter (sample_index in range(length(family.samples))) {
@@ -353,48 +353,64 @@ workflow humanwgs_family {
   scatter (sample_index in range(length(family.samples))) {
     # Consensus-based CRISPR edit annotation - runs only if expected_edit is provided
     if (defined(family.samples[sample_index].expected_edit)) {
+      # Annotate MSA group consensus sequences with edit parts
       call CrisprEditConsensus.crispr_edit_consensus {
         input:
-          sample_id           = sample_id[sample_index],
-          haplotagged_bam     = downstream.merged_haplotagged_bam[sample_index],
-          haplotagged_bam_index = downstream.merged_haplotagged_bam_index[sample_index],
-          ref_fasta           = ref_map["fasta"],        # !FileCoercion
-          ref_fasta_index     = ref_map["fasta_index"],  # !FileCoercion
-          small_variant_vcf       = downstream.phased_small_variant_vcf[sample_index],
-          small_variant_vcf_index = downstream.phased_small_variant_vcf_index[sample_index],
-          sv_vcf                  = downstream.phased_sv_vcf[sample_index],
-          sv_vcf_index            = downstream.phased_sv_vcf_index[sample_index],
-          crispr_edit_json    = select_first([family.samples[sample_index].expected_edit]),
-          runtime_attributes  = default_runtime_attributes
+          sample_id        = sample_id[sample_index],
+          consensus_fasta  = select_first([crispr_edit_qc.consensus_fasta[sample_index]]),
+          crispr_edit_json = select_first([family.samples[sample_index].expected_edit]),
+          runtime_attributes = default_runtime_attributes
       }
 
-      # knock-knock HDR outcome classification
+      # knock-knock HDR outcome classification (uses edit-QC filtered reads, no BAM dependency)
       call KnockKnock.knock_knock {
         input:
           sample_id          = sample_id[sample_index],
           crispr_edit_json   = select_first([family.samples[sample_index].expected_edit]),
-          region_reads_fastq = crispr_edit_consensus.region_reads_fastq,
+          region_reads_fastq = select_first([crispr_edit_qc.filtered_reads_fastq[sample_index]]),
           ref_fasta          = ref_map["fasta"],        # !FileCoercion
           ref_fasta_index    = ref_map["fasta_index"],  # !FileCoercion
           runtime_attributes = default_runtime_attributes
       }
 
-      # Parent consensus annotation - for wild type comparison at same locus
+      # Parent: run edit QC at same locus (child's edit JSON) then annotate consensus
       if (defined(resolved_parent_id[sample_index])) {
         Int parent_idx_for_consensus = sidx_by_id[select_first([resolved_parent_id[sample_index]])]
+
+        # Extract parent reads overlapping the edit region from the haplotagged BAM —
+        # much faster than running the full minimap2 filter on the whole-genome FASTA.
+        call CrisprEditTasks.extract_region_reads_fasta as parent_region_reads {
+          input:
+            haplotagged_bam       = downstream.merged_haplotagged_bam[parent_idx_for_consensus],
+            haplotagged_bam_index = downstream.merged_haplotagged_bam_index[parent_idx_for_consensus],
+            crispr_edit_json      = select_first([family.samples[sample_index].expected_edit]),
+            sample_id             = select_first([resolved_parent_id[sample_index]]),
+            runtime_attributes    = default_runtime_attributes
+        }
+
+        call CrisprEditQC.crispr_edit_qc as parent_edit_qc {
+          input:
+            sample_id                = select_first([resolved_parent_id[sample_index]]),
+            pre_filtered_reads_fasta = parent_region_reads.region_reads_fasta,
+            crispr_edit_json         = select_first([family.samples[sample_index].expected_edit]),
+            runtime_attributes       = default_runtime_attributes
+        }
         call CrisprEditConsensus.crispr_edit_consensus as parent_consensus {
           input:
-            sample_id           = select_first([resolved_parent_id[sample_index]]),
-            haplotagged_bam     = bam_files_by_id[select_first([resolved_parent_id[sample_index]])],
-            haplotagged_bam_index = bam_index_by_id[select_first([resolved_parent_id[sample_index]])],
-            ref_fasta           = ref_map["fasta"],        # !FileCoercion
-            ref_fasta_index     = ref_map["fasta_index"],  # !FileCoercion
-            small_variant_vcf       = downstream.phased_small_variant_vcf[parent_idx_for_consensus],
-            small_variant_vcf_index = downstream.phased_small_variant_vcf_index[parent_idx_for_consensus],
-            sv_vcf                  = downstream.phased_sv_vcf[parent_idx_for_consensus],
-            sv_vcf_index            = downstream.phased_sv_vcf_index[parent_idx_for_consensus],
-            crispr_edit_json    = select_first([family.samples[sample_index].expected_edit]),
-            runtime_attributes  = default_runtime_attributes
+            sample_id        = select_first([resolved_parent_id[sample_index]]),
+            consensus_fasta  = select_first([parent_edit_qc.consensus_fasta]),
+            crispr_edit_json = select_first([family.samples[sample_index].expected_edit]),
+            runtime_attributes = default_runtime_attributes
+        }
+
+        call CrisprEditTasks.align_consensus_msa {
+          input:
+            child_consensus_fasta  = select_first([crispr_edit_qc.consensus_fasta[sample_index]]),
+            parent_consensus_fasta = select_first([parent_edit_qc.consensus_fasta]),
+            child_sample_id        = sample_id[sample_index],
+            parent_sample_id       = select_first([resolved_parent_id[sample_index]]),
+            crispr_edit_json       = select_first([family.samples[sample_index].expected_edit]),
+            runtime_attributes     = default_runtime_attributes
         }
       }
     }
@@ -555,6 +571,8 @@ workflow humanwgs_family {
         truvari_consistency_tsv = truvari_consistency_small_variants.truvari_consistency_tsv,
         sample_index            = sample_index,
         parent_index            = parent_index,
+        family_merged_vcf       = if parent_index != 999 then truvari_collapse_small_variants.truvari_merge_vcf else None,
+        parent_sample_id        = if parent_index != 999 then resolved_parent_id[sample_index] else None,
         runtime_attributes      = default_runtime_attributes
       }
 
@@ -565,21 +583,38 @@ workflow humanwgs_family {
         truvari_consistency_tsv = truvari_consistency_sv.truvari_consistency_tsv,
         sample_index            = sample_index,
         parent_index            = parent_index,
+        family_merged_vcf       = if parent_index != 999 then truvari_collapse_sv.truvari_merge_vcf else None,
+        parent_sample_id        = if parent_index != 999 then resolved_parent_id[sample_index] else None,
         runtime_attributes      = default_runtime_attributes
+      }
+
+      # Quality filtering: GQ > 20 and FILTER=PASS, applied per-sample after parent filtering
+      call Bcftools_aux.bcftools_qual_filter as qual_filter_small_variants {
+        input:
+          vcf                = parent_filter_small_variants.filtered_vcf,
+          out_prefix         = "~{sample_id[sample_index]}.small_variants.qual_filtered",
+          runtime_attributes = default_runtime_attributes
+      }
+
+      call Bcftools_aux.bcftools_qual_filter as qual_filter_sv {
+        input:
+          vcf                = parent_filter_sv.filtered_vcf,
+          out_prefix         = "~{sample_id[sample_index]}.sv.qual_filtered",
+          runtime_attributes = default_runtime_attributes
       }
 
       # AnnotSV after split because we need its tsv conversion
       call Somatic_annotation.annotsv as annotate_parent_filter_sv {
         input:
-        sv_vcf        = parent_filter_sv.filtered_vcf,
-        sv_vcf_index  = parent_filter_sv.filtered_vcf_index,
+        sv_vcf        = qual_filter_sv.filtered_vcf,
+        sv_vcf_index  = qual_filter_sv.filtered_vcf_index,
         annotsv_cache = somatic_map["annotsv_cache"],                             # !FileCoercion
         threads       = 2
       }
 
       call Somatic_annotation.prioritize_small_variants as prioritizeSomatic {
         input:
-        vep_annotated_vcf   = parent_filter_small_variants.filtered_vcf,
+        vep_annotated_vcf   = qual_filter_small_variants.filtered_vcf,
         threads             = 2,
         sample              = family.samples[sample_index].sample_id
       }
@@ -598,6 +633,18 @@ workflow humanwgs_family {
       call Bcftools_aux.count_vcf_variants as count_parent_filtered_sv {
         input:
           vcf = parent_filter_sv.filtered_vcf,
+          runtime_attributes = default_runtime_attributes
+      }
+
+      # Count variants after GQ/VAF filtering
+      call Bcftools_aux.count_vcf_variants as count_qual_filtered_small_variants {
+        input:
+          vcf = qual_filter_small_variants.filtered_vcf,
+          runtime_attributes = default_runtime_attributes
+      }
+      call Bcftools_aux.count_vcf_variants as count_qual_filtered_sv {
+        input:
+          vcf = qual_filter_sv.filtered_vcf,
           runtime_attributes = default_runtime_attributes
       }
 
@@ -653,6 +700,8 @@ workflow humanwgs_family {
       flatten([['quality_filtered_SV_count'], select_first([count_tertiary_sv.variant_count, []])]),
       flatten([['parent_filtered_SNV_count'], select_first([count_parent_filtered_snv.variant_count, []])]),
       flatten([['parent_filtered_SV_count'], select_first([count_parent_filtered_sv.variant_count, []])]),
+      flatten([['qual_filtered_small_variant_count'], select_first([count_qual_filtered_small_variants.variant_count, []])]),
+      flatten([['qual_filtered_SV_count'], select_first([count_qual_filtered_sv.variant_count, []])]),
       flatten([['concerning_SNV_count'], select_first([count_concerning_snv.row_count, []])]),
       flatten([['concerning_SV_count'], select_first([count_concerning_sv.row_count, []])])
   ]
@@ -835,13 +884,20 @@ workflow humanwgs_family {
     Array[File]? parent_filtered_sv_vcf                  = parent_filter_sv.filtered_vcf
     Array[File]? parent_filtered_sv_vcf_index            = parent_filter_sv.filtered_vcf_index
 
+    Array[File]? qual_filtered_small_variant_vcf       = qual_filter_small_variants.filtered_vcf
+    Array[File]? qual_filtered_small_variant_vcf_index = qual_filter_small_variants.filtered_vcf_index
+    Array[File]? qual_filtered_sv_vcf                  = qual_filter_sv.filtered_vcf
+    Array[File]? qual_filtered_sv_vcf_index            = qual_filter_sv.filtered_vcf_index
+
     # Variant count summary stats at each filtering stage
-    Array[String]? stat_quality_filtered_SNV_count  = count_tertiary_snv.variant_count
-    Array[String]? stat_quality_filtered_SV_count   = count_tertiary_sv.variant_count
-    Array[String]? stat_parent_filtered_SNV_count   = count_parent_filtered_snv.variant_count
-    Array[String]? stat_parent_filtered_SV_count    = count_parent_filtered_sv.variant_count
-    Array[String]? stat_concerning_SNV_count         = count_concerning_snv.row_count
-    Array[String]? stat_concerning_SV_count          = count_concerning_sv.row_count
+    Array[String]? stat_quality_filtered_SNV_count              = count_tertiary_snv.variant_count
+    Array[String]? stat_quality_filtered_SV_count               = count_tertiary_sv.variant_count
+    Array[String]? stat_parent_filtered_SNV_count               = count_parent_filtered_snv.variant_count
+    Array[String]? stat_parent_filtered_SV_count                = count_parent_filtered_sv.variant_count
+    Array[String]? stat_qual_filtered_small_variant_count     = count_qual_filtered_small_variants.variant_count
+    Array[String]? stat_qual_filtered_SV_count                = count_qual_filtered_sv.variant_count
+    Array[String]? stat_concerning_SNV_count                    = count_concerning_snv.row_count
+    Array[String]? stat_concerning_SV_count                     = count_concerning_sv.row_count
 
     # Somatic SV calling
     # Array[File] Severus_somatic_vcf                           = select_all(select_first([phased_severus.output_vcf]))
@@ -885,14 +941,21 @@ workflow humanwgs_family {
 
     # CRISPR edit QC outputs (read-based)
     Array[File?] edit_qc_filtered_reads_fasta   = crispr_edit_qc.filtered_reads_fasta
-    Array[File?] edit_qc_parts_alignment_paf    = crispr_edit_qc.parts_alignment_paf
+    Array[File?] edit_qc_parts_alignment_tsv    = crispr_edit_qc.parts_alignment_tsv
     Array[File?] edit_qc_wide_faithful_tsv      = crispr_edit_qc.wide_faithful_table
+    Array[File?] edit_qc_consensus_fasta        = crispr_edit_qc.consensus_fasta
+    Array[File?] edit_qc_categories_tsv         = crispr_edit_qc.categories_tsv
 
     # CRISPR edit consensus annotation outputs
     Array[File?] edit_consensus_genbank          = crispr_edit_consensus.genbank_annotations
     Array[File?] edit_consensus_summary          = crispr_edit_consensus.annotation_summary
-    Array[File?] parent_consensus_genbank       = parent_consensus.genbank_annotations
-    Array[File?] parent_consensus_summary       = parent_consensus.annotation_summary
+
+    # Parent edit QC outputs (WT at same locus, using child's edit JSON)
+    Array[File?] parent_edit_qc_categories_tsv  = parent_edit_qc.categories_tsv
+    Array[File?] parent_edit_qc_consensus_fasta = parent_edit_qc.consensus_fasta
+    Array[File?] edit_consensus_msa_clustal     = align_consensus_msa.consensus_msa_clustal
+    Array[File?] parent_consensus_genbank        = parent_consensus.genbank_annotations
+    Array[File?] parent_consensus_summary        = parent_consensus.annotation_summary
 
     # knock-knock HDR outcome classification outputs
     Array[File?] knock_knock_outcome_list_txt              = knock_knock.outcome_list_txt
@@ -907,6 +970,7 @@ workflow humanwgs_family {
     Array[Float?]  loh_het_intact_upstream_pct     = check_loh.het_intact_upstream_pct
     Array[Float?]  loh_het_intact_downstream_pct   = check_loh.het_intact_downstream_pct
     Array[File?]   loh_summary                     = check_loh.loh_summary
+    Array[File?]   loh_chrom_bedgraph              = check_loh.loh_chrom_bedgraph
 
     # Off-target analysis outputs
     Array[String?] predicted_cut_site   = convert_offtarget_to_bed.expected_cut_site
