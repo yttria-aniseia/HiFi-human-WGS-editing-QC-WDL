@@ -9,6 +9,10 @@ all_Ngn2-KOLF
 all_KOLF21J
 26apr10_Ngn2-KOLF
 26may06_KOLF
+all_6tf_260605
+publication_Ngn2-KOLF-may
+outputs/
+*/outputs/
 
 hifisomatic_resources
 hifi-wdl-resources-v*
