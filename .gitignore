@@ -43,5 +43,3 @@ workflows/snakemake
 .env
 .venv
 .env
-.claude
-CLAUDE.md
