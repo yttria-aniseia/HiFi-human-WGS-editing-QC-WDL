@@ -1045,6 +1045,7 @@ task build_group_consensus {
   parameter_meta {
     mask_min_support:  "Mask consensus positions where plurality support <= this AND coverage >= mask_min_coverage"
     mask_min_coverage: "Coverage threshold for masking (see mask_min_support)"
+    min_minor_frac:    "Sub-haplotype variable site: each allele (incl. gaps) must reach >= 2 reads AND this fraction of covered (non-N) reads. Rejects recurrent low-frequency HiFi indel/substitution noise; lower it to detect rarer real subclones."
   }
 
   input {
@@ -1054,6 +1055,7 @@ task build_group_consensus {
     String sample_id
     Int mask_min_support  = 2
     Int mask_min_coverage = 5
+    Float min_minor_frac  = 0.2
     RuntimeAttributes runtime_attributes
   }
 
@@ -1181,13 +1183,24 @@ def retained_columns(seqs_dict):
             cols.append(col)
     return cols
 
-def cluster_haplotypes(msa_seqs, cols=None):
+def cluster_haplotypes(msa_seqs, cols=None, min_minor_frac=~{min_minor_frac}):
     """
-    Detect variable sites (>= 2 distinct non-N alleles — including '-' for
-    indels — each in >= 2 reads) and cluster reads by identical allele vector
+    Detect variable sites and cluster reads by identical allele vector
     (Hamming = 0, skipping N positions only).  Returns {read_name: hap_label}
-    where label is 'A', 'B', etc.  Returns all 'A' if no variable sites exist
-    or any resulting cluster has fewer than 2 reads.
+    where label is 'A', 'B', etc.
+
+    A column is a variable site when >= 2 distinct non-N alleles — gaps '-'
+    count as a real allele, since they carry genuine indel haplotypes even
+    though single-base low-fraction gaps are the dominant HiFi error — each
+    reach BOTH >= 2 reads AND >= min_minor_frac of the covered (non-N) reads.
+    The fractional floor rejects recurrent low-frequency indel/substitution
+    noise (e.g. a 2-of-43 spurious gap) while the absolute floor still
+    requires corroboration.
+
+    A read whose allele vector is unique (a 1-read "cluster", most likely a
+    private error) is folded into its nearest >= 2-read cluster rather than
+    discarding the whole group's split over one outlier.  Returns all 'A' if
+    no variable sites exist or fewer than 2 clusters reach >= 2 reads.
 
     cols: restrict variable-site search to these MSA column indices (pass-1
     error-corrected columns).  Defaults to all columns.
@@ -1199,12 +1212,18 @@ def cluster_haplotypes(msa_seqs, cols=None):
 
     var_cols = []
     for col in cols:
-        freq = {}
+        freq  = {}
+        n_cov = 0
         for r in rnames:
             b = msa_seqs[r][col]
             if b != 'N':                   # gaps count as a real allele
                 freq[b] = freq.get(b, 0) + 1
-        if sum(1 for cnt in freq.values() if cnt >= 2) >= 2:
+                n_cov  += 1
+        if n_cov == 0:
+            continue
+        qual = sum(1 for cnt in freq.values()
+                   if cnt >= 2 and cnt >= min_minor_frac * n_cov)
+        if qual >= 2:
             var_cols.append(col)
 
     if not var_cols:
@@ -1220,12 +1239,23 @@ def cluster_haplotypes(msa_seqs, cols=None):
         else:
             clusters.append({r})
 
-    # Require every cluster to have >= 2 reads; otherwise the split is unreliable
-    if any(len(c) < 2 for c in clusters):
+    # A real sub-haplotype needs >= 2 corroborating reads; bail only if there
+    # is no genuine multi-way split (fewer than 2 such clusters).
+    big = [c for c in clusters if len(c) >= 2]
+    if len(big) < 2:
         return {r: 'A' for r in rnames}
 
-    labels = [chr(65 + i) for i in range(len(clusters))]
-    return {r: labels[i] for i, cluster in enumerate(clusters) for r in cluster}
+    # Fold each singleton (likely private error) into its nearest big cluster
+    # instead of discarding the whole split.
+    for cluster in clusters:
+        if len(cluster) >= 2:
+            continue
+        r = next(iter(cluster))
+        nearest = min(big, key=lambda c: hamming(vecs[r], vecs[next(iter(c))]))
+        nearest.add(r)
+
+    labels = [chr(65 + i) for i in range(len(big))]
+    return {r: labels[i] for i, cluster in enumerate(big) for r in cluster}
 
 # ── Sub-haplotype assignments (written at end) ────────────────────────────────
 subhap_assignments = {}   # read_name -> "group_{gid}_hap_{label}"
