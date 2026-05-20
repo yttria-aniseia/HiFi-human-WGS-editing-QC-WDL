@@ -4,5 +4,9 @@ ref_gff	hifisomatic_resources/Homo_sapiens.GRCh38.112.chr.reformatted.gff3
 control_vcf	hifisomatic_resources/severus.jasmine.AN10.AC4.nosample.vcf.gz
 control_vcf_index	hifisomatic_resources/severus.jasmine.AN10.AC4.nosample.vcf.gz.tbi
 severus_pon_tsv	PoN_1000G_hg38_extended.tsv.gz
-vep_cache	homo_sapiens_refseq_vep_112_GRCh38.tar.gz
+vep_cache	homo_sapiens_refseq_vep_115_GRCh38.tar.gz
 annotsv_cache	annotsv_cache.tar.gz
+dbnsfp_file	dbNSFP5.3.1a_grch38.gz
+dbnsfp_file_index	dbNSFP5.3.1a_grch38.gz.tbi
+clinvar_vcf	clinvar.vcf.gz
+clinvar_vcf_index	clinvar.vcf.gz.tbi

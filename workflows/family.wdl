@@ -504,13 +504,51 @@ workflow humanwgs_family {
       runtime_attributes  = default_runtime_attributes
     }
 
+    call Somatic_annotation.make_splice_region_bed as spliceRegionBed {
+      input:
+      ref_gff = somatic_map["ref_gff"]  # !FileCoercion
+    }
+
+    call Somatic_annotation.filter_vcf_by_regions as filterSpliceRegions {
+      input:
+      input_vcf       = normalize_small_variants.normalized_vcf,
+      input_vcf_index = normalize_small_variants.normalized_vcf_index,
+      regions_bed     = spliceRegionBed.regions_bed,
+      out_prefix      = "~{family.family_id}.small_variants.splice_regions"
+    }
+
+    call Somatic_annotation.spliceai_annotate as spliceaiGermline {
+      input:
+      input_vcf       = filterSpliceRegions.filtered_vcf,
+      input_vcf_index = filterSpliceRegions.filtered_vcf_index,
+      ref_fasta       = ref_map["fasta"],
+      ref_fasta_index = ref_map["fasta_index"]
+    }
+
+    call Somatic_annotation.bgzip_and_index_vcf as bgzipSpliceAI {
+      input:
+      input_vcf = spliceaiGermline.spliceai_vcf
+    }
+
     call Somatic_annotation.vep_annotate as annotateGermline {
       input:
       input_vcf           = normalize_small_variants.normalized_vcf,
       vep_cache           = somatic_map["vep_cache"],                           # !FileCoercion
       ref_fasta           = ref_map["fasta"],
       ref_fasta_index     = ref_map["fasta_index"],
+      dbnsfp_file         = somatic_map["dbnsfp_file"],                         # !FileCoercion
+      dbnsfp_file_index   = somatic_map["dbnsfp_file_index"],                   # !FileCoercion
+      clinvar_vcf         = somatic_map["clinvar_vcf"],                         # !FileCoercion
+      clinvar_vcf_index   = somatic_map["clinvar_vcf_index"],                   # !FileCoercion
       threads             = 16
+    }
+
+    call Somatic_annotation.bcftools_annotate_spliceai as annotateSpliceAI {
+      input:
+      input_vcf       = annotateGermline.annotated_vcf,
+      input_vcf_index = annotateGermline.annotated_vcf_index,
+      spliceai_vcf    = bgzipSpliceAI.vcf,
+      spliceai_vcf_index = bgzipSpliceAI.vcf_index
     }
 
     call TruvariParentFilter.truvari_collapse as truvari_collapse_sv {
@@ -539,8 +577,8 @@ workflow humanwgs_family {
 
     call TruvariParentFilter.truvari_collapse as truvari_collapse_small_variants {
       input:
-      merged_vcf         = annotateGermline.annotated_vcf,
-      merged_vcf_index   = annotateGermline.annotated_vcf_index,
+      merged_vcf         = annotateSpliceAI.annotated_vcf,
+      merged_vcf_index   = annotateSpliceAI.annotated_vcf_index,
       out_prefix         = "~{family.family_id}.small_variants.parent_filter",
       runtime_attributes = default_runtime_attributes
     }
@@ -911,7 +949,7 @@ workflow humanwgs_family {
     # Array[File] Severus_filtered_vcf_index                    = select_first([recover_mate_bnd.output_vcf_index])
 
     # annotation analysis outputs
-    File? merged_vep_annotated_vcf                            = annotateGermline.annotated_vcf
+    File? merged_vep_annotated_vcf                            = annotateSpliceAI.annotated_vcf
 
     # SV annotations only come in tsv form.
     Array[File]? sv_annotated_tsv                             = annotate_parent_filter_sv.annotated_tsv
