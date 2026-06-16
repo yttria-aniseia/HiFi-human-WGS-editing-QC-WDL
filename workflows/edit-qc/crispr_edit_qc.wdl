@@ -103,11 +103,21 @@ workflow crispr_edit_qc {
     runtime_attributes = runtime_attributes
   }
 
+  # ── Normalize read orientation against edit parts ────────────────────────
+  call CrisprEditTasks.normalize_read_orientation {
+    input:
+    filtered_reads_fasta = actual_filtered_fasta,
+    parts_alignment_tsv  = blastn_pass1.parts_alignment_tsv,
+    sample_id            = sample_id,
+    min_part_hit_bp      = min_part_hit_bp,
+    runtime_attributes   = runtime_attributes
+  }
+
   # ── Clip reads to union of part-hit spans ─────────────────────────────────
   call CrisprEditTasks.clip_reads_to_parts {
     input:
-    parts_alignment_tsv = blastn_pass1.parts_alignment_tsv,
-    filtered_reads_fasta = actual_filtered_fasta,
+    parts_alignment_tsv = normalize_read_orientation.normalized_parts_alignment_tsv,
+    filtered_reads_fasta = normalize_read_orientation.normalized_reads_fasta,
     sample_id = sample_id,
     clip_padding = clip_padding,
     min_part_hit_bp = min_part_hit_bp,
@@ -117,7 +127,7 @@ workflow crispr_edit_qc {
   # ── Structural grouping: signature + prototype clustering ─────────────────
   call CrisprEditTasks.structural_grouping {
     input:
-    parts_alignment_tsv = blastn_pass1.parts_alignment_tsv,
+    parts_alignment_tsv = normalize_read_orientation.normalized_parts_alignment_tsv,
     sample_id = sample_id,
     gap_merge_threshold = gap_merge_threshold,
     min_part_hit_bp = min_part_hit_bp,
@@ -152,7 +162,7 @@ workflow crispr_edit_qc {
   # ── Wide per-part coverage table (backwards-compatible) ──────────────────
   call CrisprEditTasks.make_wide_coverage_table {
     input:
-    parts_alignment_tsv = blastn_pass1.parts_alignment_tsv,
+    parts_alignment_tsv = normalize_read_orientation.normalized_parts_alignment_tsv,
     coverage_threshold = coverage_threshold,
     min_part_hit_bp = min_part_hit_bp,
     sample_id = sample_id,
@@ -162,10 +172,10 @@ workflow crispr_edit_qc {
   # ── Final categorization ──────────────────────────────────────────────────
   call CrisprEditTasks.categorize_reads {
     input:
-    filtered_reads_fasta = actual_filtered_fasta,
+    filtered_reads_fasta = normalize_read_orientation.normalized_reads_fasta,
     groups_tsv = structural_grouping.groups_tsv,
     subhaps_tsv = build_group_consensus.subhaps_tsv,
-    pass2_alignment_tsv = blastn_pass1.parts_alignment_tsv,
+    pass2_alignment_tsv = normalize_read_orientation.normalized_parts_alignment_tsv,
     sample_id = sample_id,
     gap_merge_threshold = gap_merge_threshold,
     wt_gap_threshold    = wt_gap_threshold,
@@ -181,6 +191,7 @@ workflow crispr_edit_qc {
     File? filtered_reads_fastq   = extract_reads.filtered_reads_fastq
     File? offtarget_filter_counts_tsv = filter_offtarget_reads.counts_tsv
     File? parts_alignment_tsv    = blastn_pass1.parts_alignment_tsv
+    File? normalization_log      = normalize_read_orientation.normalization_log
     File? clipped_reads_fasta    = clip_reads_to_parts.clipped_reads_fasta
 
     # Per-part coverage table (wide faithful format, backwards-compatible)

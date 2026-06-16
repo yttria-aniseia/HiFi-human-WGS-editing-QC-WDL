@@ -435,6 +435,216 @@ task blastn_remap_parts {
 
 
 
+task normalize_read_orientation {
+  meta {
+    description: "Canonicalize per-read orientation against edit parts so forward- and reverse-sequenced reads of the same allele collapse into a single structural group"
+  }
+
+  parameter_meta {
+    filtered_reads_fasta:   "Uncompressed FASTA with reads overlapping edit parts"
+    parts_alignment_tsv:    "Pass-1 blastn tabular output (from blastn_remap_parts)"
+    min_part_hit_bp:        "Minimum query-span (bp) for a blastn hit to be counted; filters repetitive short matches"
+  }
+
+  input {
+    File filtered_reads_fasta
+    File parts_alignment_tsv
+    String sample_id
+    Int min_part_hit_bp = 100
+    RuntimeAttributes runtime_attributes
+  }
+
+  command <<<
+    set -euxo pipefail
+
+    python3 <<'PYEOF'
+import sys
+from collections import defaultdict
+
+# ── Columns (0-based): ────────────────────────────────────────────────────────
+#  0 qseqid  1 qlen   2 qstart  3 qend   4 sseqid   5 slen
+#  6 sstart  7 send   8 nident  9 mismatch 10 gapopen 11 gaps
+# 12 length 13 sstrand 14 bitscore
+# ─────────────────────────────────────────────────────────────────────────────
+
+MIN_HIT = ~{min_part_hit_bp}
+PART_SUFFIXES = ("_left_HA", "_right_HA", "_payload")
+
+# Per-read accumulator: {read: {strand: [n_match, ...]}, 'hits': [(t_start, strand), ...]}
+from collections import defaultdict
+
+class ReadInfo:
+    __slots__ = ('bp_pos', 'bp_neg', 'n_pos', 'n_neg', 'hits')
+    def __init__(self):
+        self.bp_pos = 0
+        self.bp_neg = 0
+        self.n_pos  = 0
+        self.n_neg  = 0
+        self.hits   = []  # (t_start, strand)
+
+read_info = defaultdict(ReadInfo)
+all_read_names = []  # preserve encounter order for no-hit reads
+
+rows = []
+with open("~{parts_alignment_tsv}") as fh:
+    for ln in fh:
+        if not ln.strip() or ln.startswith('#'):
+            rows.append(ln)
+            continue
+        f = ln.rstrip('\n').split('\t')
+        if len(f) < 15:
+            rows.append(ln)
+            continue
+        rows.append(f)
+
+        qseqid = f[0]
+        if not any(qseqid.endswith(s) for s in PART_SUFFIXES):
+            continue
+        try:
+            qstart  = int(f[2])
+            qend    = int(f[3])
+            sseqid  = f[4]
+            slen    = int(f[5])
+            sstart  = int(f[6])
+            send    = int(f[7])
+            nident  = int(f[8])
+            sstrand = f[13]
+        except (ValueError, IndexError):
+            continue
+
+        if abs(qend - qstart) < MIN_HIT:
+            continue
+
+        ri = read_info[sseqid]
+        t_start = min(sstart, send)
+        if sstrand == 'plus':
+            ri.bp_pos += nident
+            ri.n_pos  += 1
+        else:
+            ri.bp_neg += nident
+            ri.n_neg  += 1
+        ri.hits.append((t_start, sstrand))
+
+# ── Decision per read ─────────────────────────────────────────────────────────
+flip_set = set()
+decisions = {}  # read_name -> (n_pos, n_neg, bp_pos, bp_neg, decision, rule)
+
+for rname, ri in read_info.items():
+    bp_pos, bp_neg = ri.bp_pos, ri.bp_neg
+    n_pos,  n_neg  = ri.n_pos,  ri.n_neg
+    if bp_pos > bp_neg:
+        decision, rule = 'kept',    'majority'
+    elif bp_neg > bp_pos:
+        decision, rule = 'flipped', 'majority'
+    else:
+        # tie-break by leftmost hit
+        leftmost = min(ri.hits, key=lambda h: h[0])
+        if leftmost[1] == 'plus':
+            decision, rule = 'kept',    'tiebreak_leftmost'
+        else:
+            decision, rule = 'flipped', 'tiebreak_leftmost'
+    decisions[rname] = (n_pos, n_neg, bp_pos, bp_neg, decision, rule)
+    if decision == 'flipped':
+        flip_set.add(rname)
+
+# ── Reverse-complement helper ─────────────────────────────────────────────────
+_COMP = str.maketrans(
+    'ACGTRYSWKMBDHVNacgtryswkmbdhvn',
+    'TGCAYRSWMKVHDBNtgcayrswmkvhdbn'
+)
+
+def revcomp(seq):
+    return seq.translate(_COMP)[::-1].upper()
+
+# ── Stream FASTA, flip as needed ──────────────────────────────────────────────
+out_fasta  = "~{sample_id}_normalized.fasta"
+seen_reads = set()
+
+with open("~{filtered_reads_fasta}") as inf, open(out_fasta, 'w') as outf:
+    header = None
+    seq_lines = []
+    def flush(header, seq_lines):
+        if header is None:
+            return
+        rname = header[1:].split()[0]
+        seen_reads.add(rname)
+        seq = ''.join(seq_lines).upper()
+        if rname in flip_set:
+            seq = revcomp(seq)
+        outf.write(header + '\n')
+        outf.write(seq + '\n')
+    for line in inf:
+        line = line.rstrip('\n')
+        if line.startswith('>'):
+            flush(header, seq_lines)
+            header = line
+            seq_lines = []
+        else:
+            seq_lines.append(line)
+    flush(header, seq_lines)
+
+# Add no_hit reads to decisions table
+for rname in seen_reads:
+    if rname not in decisions:
+        decisions[rname] = (0, 0, 0, 0, 'kept', 'no_hits')
+
+# ── Rewrite TSV ───────────────────────────────────────────────────────────────
+out_tsv = "~{sample_id}_normalized_parts.tsv"
+with open(out_tsv, 'w') as outf:
+    for item in rows:
+        if isinstance(item, str):
+            outf.write(item if item.endswith('\n') else item + '\n')
+            continue
+        f = item
+        sseqid = f[4]
+        if sseqid in flip_set:
+            slen   = int(f[5])
+            sstart = int(f[6])
+            send   = int(f[7])
+            new_sstart = slen - send   + 1
+            new_send   = slen - sstart + 1
+            f = f[:]
+            f[6] = str(new_sstart)
+            f[7] = str(new_send)
+            f[13] = 'minus' if f[13] == 'plus' else 'plus'
+        outf.write('\t'.join(f) + '\n')
+
+# ── Normalization log ─────────────────────────────────────────────────────────
+out_log = "~{sample_id}_normalization_log.tsv"
+header_cols = ['read_name', 'n_hits_pos', 'n_hits_neg',
+               'bp_match_pos', 'bp_match_neg', 'decision', 'rule']
+with open(out_log, 'w') as outf:
+    outf.write('\t'.join(header_cols) + '\n')
+    for rname in sorted(decisions):
+        n_pos, n_neg, bp_pos, bp_neg, decision, rule = decisions[rname]
+        outf.write('\t'.join([rname, str(n_pos), str(n_neg),
+                               str(bp_pos), str(bp_neg), decision, rule]) + '\n')
+
+n_flipped = len(flip_set)
+n_total   = len(decisions)
+print(f"normalize_read_orientation: {n_flipped}/{n_total} reads flipped", flush=True)
+PYEOF
+  >>>
+
+  output {
+    File normalized_reads_fasta        = "~{sample_id}_normalized.fasta"
+    File normalized_parts_alignment_tsv = "~{sample_id}_normalized_parts.tsv"
+    File normalization_log             = "~{sample_id}_normalization_log.tsv"
+  }
+
+  runtime {
+    docker: "~{runtime_attributes.container_registry}/pb_wdl_base@sha256:4b889a1f21a6a7fecf18820613cf610103966a93218de772caba126ab70a8e87"
+    cpu: 1
+    memory: "8 GiB"
+    disk: "20 GB"
+    preemptible: runtime_attributes.preemptible_tries
+    maxRetries: runtime_attributes.max_retries
+    awsBatchRetryAttempts: runtime_attributes.max_retries  # !UnknownRuntimeKey
+    zones: runtime_attributes.zones
+  }
+}
+
+
 task clip_reads_to_parts {
   meta {
     description: "Clip filtered reads to the union of all blastn part-hit spans plus padding"
@@ -835,6 +1045,7 @@ task build_group_consensus {
   parameter_meta {
     mask_min_support:  "Mask consensus positions where plurality support <= this AND coverage >= mask_min_coverage"
     mask_min_coverage: "Coverage threshold for masking (see mask_min_support)"
+    min_minor_frac:    "Sub-haplotype variable site: each allele (incl. gaps) must reach >= 2 reads AND this fraction of covered (non-N) reads. Rejects recurrent low-frequency HiFi indel/substitution noise; lower it to detect rarer real subclones."
   }
 
   input {
@@ -844,6 +1055,7 @@ task build_group_consensus {
     String sample_id
     Int mask_min_support  = 2
     Int mask_min_coverage = 5
+    Float min_minor_frac  = 0.2
     RuntimeAttributes runtime_attributes
   }
 
@@ -971,13 +1183,24 @@ def retained_columns(seqs_dict):
             cols.append(col)
     return cols
 
-def cluster_haplotypes(msa_seqs, cols=None):
+def cluster_haplotypes(msa_seqs, cols=None, min_minor_frac=~{min_minor_frac}):
     """
-    Detect variable sites (>= 2 distinct non-N alleles — including '-' for
-    indels — each in >= 2 reads) and cluster reads by identical allele vector
+    Detect variable sites and cluster reads by identical allele vector
     (Hamming = 0, skipping N positions only).  Returns {read_name: hap_label}
-    where label is 'A', 'B', etc.  Returns all 'A' if no variable sites exist
-    or any resulting cluster has fewer than 2 reads.
+    where label is 'A', 'B', etc.
+
+    A column is a variable site when >= 2 distinct non-N alleles — gaps '-'
+    count as a real allele, since they carry genuine indel haplotypes even
+    though single-base low-fraction gaps are the dominant HiFi error — each
+    reach BOTH >= 2 reads AND >= min_minor_frac of the covered (non-N) reads.
+    The fractional floor rejects recurrent low-frequency indel/substitution
+    noise (e.g. a 2-of-43 spurious gap) while the absolute floor still
+    requires corroboration.
+
+    A read whose allele vector is unique (a 1-read "cluster", most likely a
+    private error) is folded into its nearest >= 2-read cluster rather than
+    discarding the whole group's split over one outlier.  Returns all 'A' if
+    no variable sites exist or fewer than 2 clusters reach >= 2 reads.
 
     cols: restrict variable-site search to these MSA column indices (pass-1
     error-corrected columns).  Defaults to all columns.
@@ -989,12 +1212,18 @@ def cluster_haplotypes(msa_seqs, cols=None):
 
     var_cols = []
     for col in cols:
-        freq = {}
+        freq  = {}
+        n_cov = 0
         for r in rnames:
             b = msa_seqs[r][col]
             if b != 'N':                   # gaps count as a real allele
                 freq[b] = freq.get(b, 0) + 1
-        if sum(1 for cnt in freq.values() if cnt >= 2) >= 2:
+                n_cov  += 1
+        if n_cov == 0:
+            continue
+        qual = sum(1 for cnt in freq.values()
+                   if cnt >= 2 and cnt >= min_minor_frac * n_cov)
+        if qual >= 2:
             var_cols.append(col)
 
     if not var_cols:
@@ -1010,12 +1239,23 @@ def cluster_haplotypes(msa_seqs, cols=None):
         else:
             clusters.append({r})
 
-    # Require every cluster to have >= 2 reads; otherwise the split is unreliable
-    if any(len(c) < 2 for c in clusters):
+    # A real sub-haplotype needs >= 2 corroborating reads; bail only if there
+    # is no genuine multi-way split (fewer than 2 such clusters).
+    big = [c for c in clusters if len(c) >= 2]
+    if len(big) < 2:
         return {r: 'A' for r in rnames}
 
-    labels = [chr(65 + i) for i in range(len(clusters))]
-    return {r: labels[i] for i, cluster in enumerate(clusters) for r in cluster}
+    # Fold each singleton (likely private error) into its nearest big cluster
+    # instead of discarding the whole split.
+    for cluster in clusters:
+        if len(cluster) >= 2:
+            continue
+        r = next(iter(cluster))
+        nearest = min(big, key=lambda c: hamming(vecs[r], vecs[next(iter(c))]))
+        nearest.add(r)
+
+    labels = [chr(65 + i) for i in range(len(big))]
+    return {r: labels[i] for i, cluster in enumerate(big) for r in cluster}
 
 # ── Sub-haplotype assignments (written at end) ────────────────────────────────
 subhap_assignments = {}   # read_name -> "group_{gid}_hap_{label}"

@@ -39,6 +39,8 @@ hg002_fasta${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz
 hg002_fasta_index${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz.fai
 hg002_fasta_bgzf_index${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1.fa.gz.gzi
 hg002_chain${TAB}hifi-wdl-resources-${VER}/hg002/hg002v1.1_to_GRCh38.chain.gz" >> GRCh38.ref_map.${VERp}.template.tsv
+DBNSFP_VERSION="4.9a"
+
 
 # Build knock-knock Singularity image (no pre-built container available)
 if [[ -z "${SINGULARITY_CACHEDIR}" ]]; then
@@ -80,6 +82,30 @@ if [[ $FETCH_EXTRA -eq 1 ]]; then
 	tar -czvf annotsv_cache.tar.gz AnnotSV_annotations
 
 	echo "Starting VEP suite download"
-	wget https://ftp.ensembl.org/pub/release-112/variation/indexed_vep_cache/homo_sapiens_refseq_vep_112_GRCh38.tar.gz
-	echo "Reference Tarball Sucessfully downloaded"
+	wget https://ftp.ensembl.org/pub/release-115/variation/indexed_vep_cache/homo_sapiens_refseq_vep_115_GRCh38.tar.gz
+	echo "VEP cache successfully downloaded"
+
+	echo "Starting dbNSFP download (BayesDel, REVEL, AlphaMissense, CADD)"
+	# dbNSFP requires registration and license agreement; academic use is free but commercial
+	# use requires a separate license. See: https://www.dbnsfp.org/download
+	# v4.9a is the most recent version available for automated download without registration.
+	# Newer versions (recommended) must be downloaded manually after obtaining access — update
+	# DBNSFP_VERSION and the dbnsfp_file entries in your somatic map accordingly.
+	if [[ "${DBNSFP_VERSION}" == "4.9a" ]]; then
+		echo "WARNING: downloading dbNSFP v4.9a (automated baseline). A newer version is available at https://www.dbnsfp.org/download — download it manually and update DBNSFP_VERSION and your somatic map." >&2
+	fi
+	wget https://dbnsfp.s3.amazonaws.com/dbNSFP${DBNSFP_VERSION}.zip
+	unzip dbNSFP${DBNSFP_VERSION}.zip "dbNSFP${DBNSFP_VERSION}_variant.chr*.gz" "dbNSFP${DBNSFP_VERSION}_variant.chr*.gz.tbi"
+	# Concatenate chromosomes into single bgzipped file expected by VEP plugin
+	(zcat dbNSFP${DBNSFP_VERSION}_variant.chr1.gz | head -1; \
+	 for f in dbNSFP${DBNSFP_VERSION}_variant.chr*.gz; do zcat "$f" | tail -n +2; done) \
+	  | bgzip -c > dbNSFP${DBNSFP_VERSION}_grch38.gz
+	tabix -s 1 -b 2 -e 2 dbNSFP${DBNSFP_VERSION}_grch38.gz
+	rm -f dbNSFP${DBNSFP_VERSION}_variant.chr*.gz dbNSFP${DBNSFP_VERSION}_variant.chr*.gz.tbi dbNSFP${DBNSFP_VERSION}.zip
+	echo "dbNSFP successfully downloaded and indexed"
+
+	echo "Starting ClinVar download"
+	wget https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz
+	wget https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz.tbi
+	echo "ClinVar successfully downloaded"
 fi
