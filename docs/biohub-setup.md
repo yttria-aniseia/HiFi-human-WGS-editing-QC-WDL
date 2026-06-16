@@ -2,6 +2,12 @@
 
 Instructions for running the HiFi WGS CRISPR Edit QC pipeline on the Biohub HPC cluster.
 
+> **Using an AI coding agent?** This repo ships agent-facing docs: `AGENTS.md` (orientation +
+> guardrails, also imported by `CLAUDE.md`) and two skills under `.claude/skills/` —
+> `prepare-edit-inputs` (build/validate input configs and expected-edit JSONs) and
+> `run-and-monitor` (launch, monitor logs, triage failures, archive outputs). Point your agent
+> at those when onboarding a new run.
+
 ## Initial Setup
 
 ### 1. Clone repository with submodules

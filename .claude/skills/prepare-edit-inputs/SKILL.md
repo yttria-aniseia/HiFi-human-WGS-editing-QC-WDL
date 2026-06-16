@@ -18,6 +18,59 @@ Before anything else, confirm `scripts/setup.sh` has been run (see AGENTS.md gua
   file, the template was never populated — tell the user to run `scripts/setup.sh`. Do not
   hand-edit placeholders into guessed absolute paths.
 
+## Interpreting a sample request into samples
+
+A user request can arrive in many formats (a pasted spreadsheet table, a list, prose). The
+format doesn't matter — extract the **same four pieces of information** for each sequencing
+input, asking the user for any that are missing:
+
+- **A sample label / id** (some unique-ish name per biological sample).
+- **The gene / edit background** — which lets you map to expected-edit information. A real gene
+  symbol (e.g. `TOMM70`, `G3BP1`) implies an edited sample with an expected edit; a background
+  like `Parental`/`WT` implies an unedited baseline.
+- **The parent/background relationship** — which baseline (parental, same genetic background)
+  each edited clone derives from, for constructing the family (`mother_id`/`father_id`,
+  `affected`).
+- **The HiFi reads BAM path(s)** for that input. Sources are often Revio SMRTcell output dirs
+  — locate the reads BAM with `find <dir> -name '*.bam'` (the hifi_reads/unaligned BAM).
+
+> Example of one common format — a tab-separated table whose columns are roughly:
+> `label | library key | id# | gene/background | cell line | (internal key) | BAM source dir`.
+> Treat such layouts as hints, not a fixed schema; confirm the mapping if columns are ambiguous.
+> (Any `cellline%gene`-style column is typically an internal spreadsheet artifact for library
+> matching — ignore it for pipeline purposes.)
+
+Resolution rules that recur regardless of format:
+
+1. **Repeated sample (same label/key on multiple rows) = one sample, multiple SMRTcells.**
+   Collect the BAM from every such input into that sample's `hifi_reads` list —
+   `process_input_config.py` merges them.
+
+2. **Pooled inputs** (a label like `1138_1156_pool` whose id column names a *different* sample
+   than the label) = one SMRTcell that sequenced **multiple barcoded samples**.
+   - Treat it as the **intended target id/gene** (the one in the id/gene columns, e.g. `1156`),
+     not the other number in the label.
+   - The pool contains per-barcode BAMs; **inspect barcodes to identify which BAM is which
+     sample** before using one:
+     ```bash
+     samtools view -H <bam> | grep -E '@RG|bc|barcode'      # read-group / barcode tags
+     # or: samtools view <bam> | head | grep -oE 'bc:[^\t]+'
+     ```
+   - Add **only the target's BAM** to that sample, and **merge it with the target's other
+     (non-pooled) runs** into one `hifi_reads` list.
+   - Fiddly and easy to get wrong — **confirm the barcode→sample mapping with the user.**
+
+3. **Gene → expected-edit matching.** When the background is a gene name, the sample almost
+   certainly has an expected edit:
+   - Search `my_inputs/` for a matching edit JSON by gene symbol.
+   - If found, **show the candidate(s) to the user and confirm** it's the right edit (payload/
+     HA/guide) before wiring it in.
+   - If not easily found, **ask the user for edit details** (GenBank/Benchling export,
+     transcript, gRNA) and run the creation process (section 2 below).
+   - Baseline/parental inputs get **no** `expected_edits`, are `affected: false`, and serve as
+     the `mother_id`/`father_id` for the edited clones of the same genetic background. One
+     baseline can parent many clones.
+
 ## 1. dbNSFP licensing (do this once, flag every time)
 
 `setup.sh` auto-downloads **dbNSFP v4.9a** as a *fallback only*. v4.x omits columns that are
