@@ -18,7 +18,7 @@
         "affected": true,
         "sex": "FEMALE",
         "mother_id": "parent_wt",
-        "expected_edits": "/path/to/gene_A_expected_edits.json"
+        "expected_edit": "/path/to/gene_A_expected_edits.json"
       },
       {
         "sample_id": "clone_A2",
@@ -28,7 +28,7 @@
         "affected": true,
         "sex": "FEMALE",
         "mother_id": "parent_wt",
-        "expected_edits": "/path/to/gene_A_expected_edits.json"
+        "expected_edit": "/path/to/gene_A_expected_edits.json"
       },
       {
         "sample_id": "clone_B1",
@@ -38,7 +38,7 @@
         "affected": true,
         "sex": "FEMALE",
         "mother_id": "parent_wt",
-        "expected_edits": "/path/to/gene_B_expected_edits.json"
+        "expected_edit": "/path/to/gene_B_expected_edits.json"
       }
     ]
   },
