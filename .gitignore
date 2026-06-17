@@ -13,6 +13,8 @@ all_6tf_260605
 publication_Ngn2-KOLF-may
 outputs/
 */outputs/
+inputs/
+*/inputs/
 
 hifisomatic_resources
 hifi-wdl-resources-v*
