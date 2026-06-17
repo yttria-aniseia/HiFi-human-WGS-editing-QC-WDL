@@ -20,7 +20,6 @@ import "edit-qc/offtarget.wdl" as OffTarget
 import "edit-qc/knock_knock.wdl" as KnockKnock
 import "edit-qc/loh.wdl" as LOH
 import "somatic_ports/somatic_annotation.wdl" as Somatic_annotation
-import "somatic_ports/somatic_calling.wdl" as Somatic_calling
 
 workflow humanwgs_family {
   meta {
@@ -937,17 +936,6 @@ workflow humanwgs_family {
     Array[String]? stat_concerning_SNV_count                    = count_concerning_snv.row_count
     Array[String]? stat_concerning_SV_count                     = count_concerning_sv.row_count
 
-    # Somatic SV calling
-    # Array[File] Severus_somatic_vcf                           = select_all(select_first([phased_severus.output_vcf]))
-    # Array[File] Severus_all_vcf                               = select_all(select_first([phased_severus.output_all_vcf]))
-    # Array[File] Severus_breakpoint_cluster                    = select_all(select_first([phased_severus.output_breakpoint_clusters]))
-    # Array[File] Severus_breakpoint_cluster_all                = select_all(select_first([phased_severus.output_breakpoint_clusters_all]))
-    # Array[File] Severus_cluster_plots                         = select_all(select_first([phased_severus.output_somatic_sv_plots]))
-
-    # Array[File] Severus_tabix_vcf                             = select_first([tabix_vcf.output_vcf])
-    # Array[File] Severus_filtered_vcf                          = select_first([recover_mate_bnd.output_vcf])
-    # Array[File] Severus_filtered_vcf_index                    = select_first([recover_mate_bnd.output_vcf_index])
-
     # annotation analysis outputs
     File? merged_vep_annotated_vcf                            = annotateSpliceAI.annotated_vcf
 
@@ -962,10 +950,6 @@ workflow humanwgs_family {
     Array[File]? small_variant_annotated_ranked_tsv           = prioritizeSomatic.vep_annotated_ranked_tsv
     Array[File]? small_variant_annotated_filtered_tsv         = prioritizeSomatic.vep_annotated_filtered_tsv
 
-    # Array[File] Severus_annotated_tsv                         = select_first([annotateSeverusSVfiltered.annotated_tsv])
-    # Array[File] Severus_annotated_ranked_tsv                  = select_first([prioritize_Severus.annotSV_ranked_tsv])
-    # Array[File] Severus_annotated_ccg_tsv                     = select_first([prioritize_Severus.annotSV_ccg_tsv])
-    # Array[File] Severus_annotated_ccg_ranked_tsv              = select_first([prioritize_Severus.annotSV_ccg_ranked_tsv])
     # tertiary analysis outputs
     File? tertiary_small_variant_filtered_vcf           = tertiary_analysis.small_variant_filtered_vcf
     File? tertiary_small_variant_filtered_vcf_index     = tertiary_analysis.small_variant_filtered_vcf_index
