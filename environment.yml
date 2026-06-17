@@ -1,9 +1,10 @@
 name: hifi-wdl
 channels:
   - conda-forge
+  - bioconda
 dependencies:
-  - miniwdl
-  - singularity
-  - miniwdl-slurm
-  - biopython
-  - samtools
+  - conda-forge::miniwdl=1.13.*
+  - conda-forge::singularity
+  - conda-forge::miniwdl-slurm=0.4.*
+  - bioconda::biopython
+  - bioconda::samtools
