@@ -72,12 +72,12 @@ if [[ $FETCH_EXTRA -eq 1 ]]; then
 
 
 	echo "Starting AnnotSV suite download"
-	wget https://github.com/lgmgeo/AnnotSV/raw/master/bin/INSTALL_annotations.sh
+	wget https://raw.githubusercontent.com/lgmgeo/AnnotSV/b270de3f6db45e4c4ad6b32e7fc868f2369b62c3/bin/INSTALL_annotations.sh
 	echo "Install Script Sucessfully downloaded"
 	echo "Starting AnnotSV cache download"
 	sed -i 's/rm -r AnnotSV/rm -rf AnnotSV/' INSTALL_annotations.sh
 	chmod +x INSTALL_annotations.sh
-	bash INSTALL_annotations.sh "v3.5.3"
+	bash INSTALL_annotations.sh "3.5" "2406"
 	echo "Finished download cache"
 	tar -czvf annotsv_cache.tar.gz AnnotSV_annotations
 
