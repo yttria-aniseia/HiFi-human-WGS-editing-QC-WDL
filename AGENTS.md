@@ -25,6 +25,13 @@ cluster**.
    highly repetitive. Always `grep -E "ERROR|FAILED|failed"`, `tail`, or scope to one
    `call-<task>/` dir. Reading a full log wastes the entire context window.
 
+   **Likewise, never run a broad `find`/`grep -r`.** This is an HPC tree: even a repo-scoped
+   search descends into every existing pipeline work dir (`*_*/`, `workflow_run_*/`,
+   `outputs/<run>/call-*/`), which hold hundreds of thousands of large intermediate files —
+   such a search is slow, can hammer the shared filesystem, and floods context. Always scope
+   to a known subdir (`workflows/`, `scripts/`, a single run's `out/`), prune work dirs
+   (`-prune`), or use the project's structure (`outputs.json`, `out/`) instead of scanning.
+
 3. **All workflow inputs must be staged under the run directory.** apptainer bind-mounts only
    paths under the cwd/run dir, which is why `scripts/launch.sh` → `process_input_config.py`
    copies, merges, and tag-strips input BAMs into `<work_dir>/inputs/`. **Do not hand
@@ -32,6 +39,41 @@ cluster**.
 
 4. **Only large INS edits are currently supported** by the edit-QC analysis. The schema
    permits `SNV`/`DEL`, but those paths are not validated end-to-end — warn the user.
+
+5. **`miniwdl.cfg` must exist before `launch.sh` will run.** `launch.sh` defaults to
+   `<repo_root>/miniwdl.cfg` and aborts with "Default miniwdl.cfg not found" if it's missing —
+   a very common first-run snag. There is **no repo-root cfg checked in**; the canonical
+   SLURM/singularity template is `backends/hpc/miniwdl.cfg`. Recommend the user keep their
+   own at `~/.config/miniwdl.cfg` (HPC-tuned), but an agent can always point launch.sh at the
+   in-repo template directly: `./scripts/launch.sh <config> --miniwdl-cfg backends/hpc/miniwdl.cfg`
+   (or `cp backends/hpc/miniwdl.cfg <repo>/miniwdl.cfg`). `launch.sh` copies the chosen cfg
+   into the work dir and rewrites its cache paths — don't hand-edit the work-dir copy.
+
+6. **Don't run the workflow directly in the foreground, and don't skip the container build.**
+   `launch.sh` Phase 1 prepulls/builds all container images (via `create_image_manifest.sh` +
+   `populate_miniwdl_singularity_cache.sh`) — never bypass it by calling `miniwdl run` on raw
+   inputs. A family run takes many hours, so launch it inside a **`screen`** (or `tmux`)
+   session so it survives logout; don't background it in a way that dies with the shell.
+
+## Disk & paths
+
+- **The work dir must live under the cloned repo** (e.g. `<repo>/workflow_run_*`).
+  apptainer bind-mounts only paths under the cwd/run dir, so inputs and outputs both have
+  to sit there (see guardrail 3). `launch.sh --work-dir` accepts a name (created under the
+  repo) or a full path — keep it inside the repo tree.
+- **Plan for large disk.** Staged inputs are ~50 GB per sample (`<work_dir>/inputs/`), plus
+  ~3 GB × 2 more per sample when a precomputed assembly haplotype is supplied (see
+  `publication_Ngn2-KOLF-may/inputs/`). Outputs scale with sample count — budget **~2 TB**
+  for a family run. The cache dirs (`miniwdl_cache/`, `miniwdl_tmp/`) add more on top.
+- **Archive, then free space — but only after the run completes.**
+  - The run dir's cached task outputs let miniwdl skip completed work on resubmit, so
+    **do not delete the work dir while a run is in progress or may be resumed.**
+  - Once a family run finishes, run `scripts/archive.sh <run_dir> [archive_base_dir]` to
+    copy the final files out (archive storage can be **anywhere** — it is not bind-mounted).
+    Staged inputs and full outputs are too large to leave in the repo tree after completion.
+  - The archive is smaller than the live run dir: it omits intermediate files that are only
+    needed for partial/resumed runs. Use `archive.sh -d` to delete source outputs after the
+    copy verifies.
 
 ## File map
 
