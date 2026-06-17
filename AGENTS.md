@@ -38,6 +38,10 @@ cluster**.
 - `workflows/family.wdl` — entrypoint. Edit-QC sub-workflows under `workflows/edit-qc/`.
 - `workflows/edit-qc/crispr_edit.schema.json` — **authoritative** schema for expected-edit JSON.
 - `GRCh38.{ref,tertiary,somatic}_map.v3p1p0.template.tsv` — reference/resource map templates.
+  - Note: in `GRCh38.tertiary_map.v3p1p0.template.tsv` we set `slivar_max_af` to `1.00`
+    (upstream default is `0.03`). This deliberately delays allele-frequency filtering until
+    later, which gives cleaner variant-filtering statistics for publication. It should have
+    no effect on the actual final reported variants.
 - `genbank_to_crispr_json.py` — Benchling GenBank → expected-edit JSON converter.
 - `scripts/setup.sh` — one-time reference + container download.
 - `scripts/launch.sh` — stages inputs and (optionally `--run`) launches the workflow.
