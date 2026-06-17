@@ -65,6 +65,10 @@ cluster**.
   ~3 GB × 2 more per sample when a precomputed assembly haplotype is supplied (see
   `publication_Ngn2-KOLF-may/inputs/`). Outputs scale with sample count — budget **~2 TB**
   for a family run. The cache dirs (`miniwdl_cache/`, `miniwdl_tmp/`) add more on top.
+- **Share the container cache across runs.** `launch.sh --cache-dir` defaults to a *per-run*
+  `<work_dir>/miniwdl_cache`, so each new run re-pulls all SIFs. Point `--cache-dir` at a
+  single repo-root location (e.g. `<repo>/miniwdl_cache`) so the singularity image cache is
+  shared and phase 1 is a near-no-op after the first run.
 - **Archive, then free space — but only after the run completes.**
   - The run dir's cached task outputs let miniwdl skip completed work on resubmit, so
     **do not delete the work dir while a run is in progress or may be resumed.**

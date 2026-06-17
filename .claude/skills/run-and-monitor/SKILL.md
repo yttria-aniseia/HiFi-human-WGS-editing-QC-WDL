@@ -23,6 +23,14 @@ fabricate one: the canonical SLURM/singularity template is **`backends/hpc/miniw
 launch.sh copies the chosen cfg into the work dir and rewrites its cache paths there — edit the
 template or `--cache-dir`/`--tmp-dir` flags, not the work-dir copy.
 
+**Set a shared cache at the repo root so multiple runs reuse the same container images.**
+`--cache-dir` defaults to `<work_dir>/miniwdl_cache`, which is **per-run** — every new work dir
+re-pulls/rebuilds all the SIFs from scratch (slow, and wastes disk). Point it at a single
+repo-root location instead, e.g. `--cache-dir <repo>/miniwdl_cache`, so the
+`singularity_cache/` (the built SIFs) is shared across runs and phase 1 is a near-no-op after
+the first run. The singularity image cache is the one that matters most to share; `--tmp-dir`
+can still be per-run/scratch.
+
 ### Launch (in a screen/tmux session — runs for hours, must survive logout)
 
 ```bash
