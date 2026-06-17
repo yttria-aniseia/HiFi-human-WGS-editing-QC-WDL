@@ -1,0 +1,171 @@
+{
+	"humanwgs_family.backend": "HPC",
+	"humanwgs_family.family": {
+		"family_id": "all_6tf_260605",
+		"samples": [
+			{
+				"affected": false,
+				"expected_edit": null,
+				"fail_reads": null,
+				"father_id": null,
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20251123_003736/2_B01/hifi_reads/m84251R1_251124_124216_s2.hifi_reads.bc2048.bam",
+					"/path/to/sequencing/Revio/r84251R1_20251123_003736/2_B01/hifi_reads/m84251R1_251124_124216_s2.hifi_reads.unassigned.bam",
+					"/path/to/sequencing/Revio/r84251R1_20251123_003736/2_C01/hifi_reads/m84251R1_251124_144520_s3.hifi_reads.bc2049.bam",
+					"/path/to/sequencing/Revio/r84251R1_20251123_003736/2_C01/hifi_reads/m84251R1_251124_144520_s3.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1175-P2_KOLF2.1J-parental-line_KOLF2.1J",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/6tf_ipsc_wt/outputs/20251219_104550_humanwgs_family/out/asm_hap1/0/czML1175_KOLF2.1J-Parental_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/6tf_ipsc_wt/outputs/20251219_104550_humanwgs_family/out/asm_hap2/0/czML1175_KOLF2.1J-Parental_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": null,
+				"fail_reads": null,
+				"father_id": "czML1175-P2_KOLF2.1J-parental-line_KOLF2.1J",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20251107_002051/1_A01/hifi_reads/m84251R1_251107_002852_s1.hifi_reads.bc2032.bam",
+					"/path/to/sequencing/Revio/r84251R1_20251107_002051/1_A01/hifi_reads/m84251R1_251107_002852_s1.hifi_reads.unassigned.bam",
+					"/path/to/sequencing/Revio/r84251R1_20251101_005004/1_C01/hifi_reads/m84251R1_251101_030050_s3.hifi_reads.bc2032.bam",
+					"/path/to/sequencing/Revio/r84251R1_20251101_005004/1_C01/hifi_reads/m84251R1_251101_030050_s3.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1161_6TF-iPSC_parental-line_clone_A02_6TF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/mv_jan_28/outputs/_LAST/out/asm_hap1/1/czML1161_6TF-iPSC_parental-line_clone_A02_6TF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/mv_jan_28/outputs/_LAST/out/asm_hap2/1/czML1161_6TF-iPSC_parental-line_clone_A02_6TF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml340_rab11a-n-term_xten80-megfp-3xha-extracontext.json",
+				"fail_reads": null,
+				"father_id": "czML1161_6TF-iPSC_parental-line_clone_A02_6TF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20260112_223106/1_C01/hifi_reads/m84251R1_260113_024441_s4.hifi_reads.bc2078.bam",
+					"/path/to/sequencing/Revio/r84251R1_20260112_223106/1_C01/hifi_reads/m84251R1_260113_024441_s4.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1186_RAB11A_6TF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/labdata/HiFi-human-WGS-editing-QC-WDL/mv_jan_16/outputs/20260127_110438_humanwgs_family/out/asm_hap1/5/czML1186_RAB11A-6TF-KOLF2.1J_clone2_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/labdata/HiFi-human-WGS-editing-QC-WDL/mv_jan_16/outputs/20260127_110438_humanwgs_family/out/asm_hap2/5/czML1186_RAB11A-6TF-KOLF2.1J_clone2_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml530_eea1-n-term_xten80-megfp-3xha-extracontext.json",
+				"fail_reads": null,
+				"father_id": "czML1161_6TF-iPSC_parental-line_clone_A02_6TF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20260116_010724/1_B01/hifi_reads/m84251R1_260116_031812_s3.hifi_reads.bc2070.bam",
+					"/path/to/sequencing/Revio/r84251R1_20260116_010724/1_B01/hifi_reads/m84251R1_260116_031812_s3.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1182_EEA1_6TF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/mv_jan_28/outputs/_LAST/out/asm_hap1/5/czML1182_EEA1_6TF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/mv_jan_28/outputs/_LAST/out/asm_hap2/5/czML1182_EEA1_6TF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/b9_pml327_tomm70a-c_ggassembled_correctedpayload-extracontext.json",
+				"fail_reads": null,
+				"father_id": "czML1161_6TF-iPSC_parental-line_clone_A02_6TF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20260116_010724/1_D01/hifi_reads/m84251R1_260116_072422_s1.hifi_reads.bc2072.bam",
+					"/path/to/sequencing/Revio/r84251R1_20260116_010724/1_D01/hifi_reads/m84251R1_260116_072422_s1.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1188_TOMM70_6TF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/mv_jan_28/outputs/_LAST/out/asm_hap1/3/czML1188_TOMM70_6TF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/mv_jan_28/outputs/_LAST/out/asm_hap2/3/czML1188_TOMM70_6TF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml323_golga2-n-term_xten80-megfp-3xha-extracontext.json",
+				"fail_reads": null,
+				"father_id": "czML1161_6TF-iPSC_parental-line_clone_A02_6TF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20260502_020143/1_A01/hifi_reads/m84251R1_260502_020914_s1.hifi_reads.bc2134.bam",
+					"/path/to/sequencing/Revio/r84251R1_20260502_020143/1_A01/hifi_reads/m84251R1_260502_020914_s1.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1228_GOLGA2_6TF-A02-KOLF",
+				"sex": "MALE"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml346_vps35-c-term_xten80-megfp-3xha-extracontext.json",
+				"fail_reads": null,
+				"father_id": "czML1161_6TF-iPSC_parental-line_clone_A02_6TF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20260502_020143/1_B01/hifi_reads/m84251R1_260502_041217_s2.hifi_reads.bc2135.bam",
+					"/path/to/sequencing/Revio/r84251R1_20260502_020143/1_B01/hifi_reads/m84251R1_260502_041217_s2.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1229_VPS35_6TF-A02-KOLF",
+				"sex": "MALE"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml454_g3bp1-n-term_xten80-megfp-3xha-extracontext.json",
+				"fail_reads": null,
+				"father_id": "czML1161_6TF-iPSC_parental-line_clone_A02_6TF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20260522_010857/1_A01/hifi_reads/m84251R1_260522_011755_s1.hifi_reads.bc2141.bam",
+					"/path/to/sequencing/Revio/r84251R1_20260522_010857/1_A01/hifi_reads/m84251R1_260522_011755_s1.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1225_G3BP1_6TF-A02-KOLF",
+				"sex": "MALE"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/updated-pml460_map1lc3b-n-term_xten80-megfp-3xha-snp-extracontext.json",
+				"fail_reads": null,
+				"father_id": "czML1161_6TF-iPSC_parental-line_clone_A02_6TF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20260522_010857/1_B01/hifi_reads/m84251R1_260522_032108_s2.hifi_reads.bc2142.bam",
+					"/path/to/sequencing/Revio/r84251R1_20260522_010857/1_B01/hifi_reads/m84251R1_260522_032108_s2.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1226_MAP1LC3B_6TF-A02-KOLF",
+				"sex": "MALE"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml499_slc3a2-c-term_xten80-sfgfp-3xha-extracontext.json",
+				"fail_reads": null,
+				"father_id": "czML1161_6TF-iPSC_parental-line_clone_A02_6TF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20260522_010857/1_C01/hifi_reads/m84251R1_260522_052415_s3.hifi_reads.bc2143.bam",
+					"/path/to/sequencing/Revio/r84251R1_20260522_010857/1_C01/hifi_reads/m84251R1_260522_052415_s3.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1231_SLC3A2_6TF-A02-KOLF",
+				"sex": "MALE"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml384_ncln-c-term_xten80-megfp-3xha-extracontext.json",
+				"fail_reads": null,
+				"father_id": "czML1161_6TF-iPSC_parental-line_clone_A02_6TF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20260522_010857/2_A01/hifi_reads/m84251R1_260523_111123_s1.hifi_reads.bc2145.bam",
+					"/path/to/sequencing/Revio/r84251R1_20260522_010857/2_A01/hifi_reads/m84251R1_260523_111123_s1.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1237_NCLN_6TF-A02-KOLF",
+				"sex": "MALE"
+			}
+		]
+	},
+	"humanwgs_family.pharmcat_min_coverage": 1,
+	"humanwgs_family.phenotypes": "",
+	"humanwgs_family.preemptible": true,
+	"humanwgs_family.ref_map_file": "/path/to/repo/GRCh38.ref_map.v3p1p0.template.tsv",
+	"humanwgs_family.somatic_map_file": "/path/to/repo/GRCh38.somatic_map.v3p1p0.template.tsv",
+	"humanwgs_family.tertiary_map_file": "/path/to/repo/GRCh38.tertiary_map.v3p1p0.template.tsv"
+}
