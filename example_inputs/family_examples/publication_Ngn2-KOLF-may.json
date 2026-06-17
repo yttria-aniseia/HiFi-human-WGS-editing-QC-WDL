@@ -1,0 +1,227 @@
+{
+	"humanwgs_family.backend": "HPC",
+	"humanwgs_family.family": {
+		"family_id": "czb_kolf",
+		"samples": [
+			{
+				"affected": false,
+				"expected_edit": null,
+				"fail_reads": null,
+				"father_id": null,
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20251123_003736/2_B01/hifi_reads/m84251R1_251124_124216_s2.hifi_reads.bc2048.bam",
+					"/path/to/sequencing/Revio/r84251R1_20251123_003736/2_B01/hifi_reads/m84251R1_251124_124216_s2.hifi_reads.unassigned.bam",
+					"/path/to/sequencing/Revio/r84251R1_20251123_003736/2_C01/hifi_reads/m84251R1_251124_144520_s3.hifi_reads.bc2049.bam",
+					"/path/to/sequencing/Revio/r84251R1_20251123_003736/2_C01/hifi_reads/m84251R1_251124_144520_s3.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1175_KOLF2.1J-Parental",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_KOLF21J/outputs/20260306_101844_humanwgs_family/out/asm_hap1/01/czML1175_KOLF2.1J-Parental_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_KOLF21J/outputs/20260306_101844_humanwgs_family/out/asm_hap2/01/czML1175_KOLF2.1J-Parental_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": null,
+				"fail_reads": null,
+				"father_id": "czML1175_KOLF2.1J-Parental",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250502_231433/r84251R1_20250509_225316/1_A01/hifi_reads/m84251R1_250509_230053_s1.hifi_reads.bc2032.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250502_231433/r84251R1_20250509_225316/1_A01/hifi_reads/m84251R1_250509_230053_s1.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML910_Parental_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/00/czML910_Parental_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/00/czML910_Parental_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml340_rab11a-n-term_xten80-megfp-3xha.json",
+				"fail_reads": null,
+				"father_id": "czML910_Parental_Ngn2-KOLF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250517_013115/1_C01/hifi_reads/m84251R1_250517_034151_s3.hifi_reads.bc2079.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250517_013115/1_C01/hifi_reads/m84251R1_250517_034151_s3.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1096_RAB11A_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/01/czML1096_RAB11A_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/01/czML1096_RAB11A_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml454_g3bp1-n-term_xten80-megfp-3xha.json",
+				"fail_reads": null,
+				"father_id": "czML910_Parental_Ngn2-KOLF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250605_235043/1_B01/hifi_reads/m84251R1_250606_020426_s4.hifi_reads.bc2074.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250605_235043/1_B01/hifi_reads/m84251R1_250606_020426_s4.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1093_G3BP1_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/02/czML1093_G3BP1_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/02/czML1093_G3BP1_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml323_golga2-n-term_xten80-megfp-3xha.json",
+				"fail_reads": null,
+				"father_id": "czML910_Parental_Ngn2-KOLF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250704_001337/2_D01/hifi_reads/m84251R1_250705_162328_s3.hifi_reads.bc2058.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250704_001337/2_D01/hifi_reads/m84251R1_250705_162328_s3.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1098_GOLGA2_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/03/czML1098_GOLGA2_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/03/czML1098_GOLGA2_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/b9_pml327_tomm70a-c_ggassembled_correctedpayload.json",
+				"fail_reads": null,
+				"father_id": "czML910_Parental_Ngn2-KOLF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20260221_204747/1_A01/hifi_reads/m84251R1_260221_205544_s2.hifi_reads.bc2085.bam",
+					"/path/to/sequencing/Revio/r84251R1_20260221_204747/1_A01/hifi_reads/m84251R1_260221_205544_s2.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1192_TOMM70A_Clone2_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/26apr10_Ngn2-KOLF/outputs/_LAST/out/asm_hap1/02/czML1192_TOMM70A_Clone2_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/26apr10_Ngn2-KOLF/outputs/_LAST/out/asm_hap2/02/czML1192_TOMM70A_Clone2_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml333_lamp1-c_lysoip.json",
+				"fail_reads": null,
+				"father_id": "czML910_Parental_Ngn2-KOLF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250726_011843/1_A01/hifi_reads/m84251R1_250726_012630_s1.hifi_reads.bc2176.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250726_011843/1_A01/hifi_reads/m84251R1_250726_012630_s1.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1085_LAMP1_Ngn2-KOLF_G5",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/07/czML1085_LAMP1_Ngn2-KOLF_G5_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/07/czML1085_LAMP1_Ngn2-KOLF_G5_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml348_atg101-n-term_xten80-megfp-3xha.json",
+				"fail_reads": null,
+				"father_id": "czML910_Parental_Ngn2-KOLF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250802_015640/2_D01/hifi_reads/m84251R1_250803_115851_s4.hifi_reads.bc2019.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250802_015640/2_D01/hifi_reads/m84251R1_250803_115851_s4.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1088_ATG101_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/08/czML1088_ATG101_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/08/czML1088_ATG101_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml530_eea1-n-term_xten80-megfp-3xha.json",
+				"fail_reads": null,
+				"father_id": "czML910_Parental_Ngn2-KOLF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250814_184752/1_D01/hifi_reads/m84251R1_250815_010418_s4.hifi_reads.bc2188.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250814_184752/1_D01/hifi_reads/m84251R1_250815_010418_s4.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1116_EEA1_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/10/czML1116_EEA1_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/10/czML1116_EEA1_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml384_ncln-c-term_xten80-megfp-3xha.json",
+				"fail_reads": null,
+				"father_id": "czML910_Parental_Ngn2-KOLF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250814_184752/2_A01/hifi_reads/m84251R1_250816_044832_s1.hifi_reads.bc2008.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250814_184752/2_A01/hifi_reads/m84251R1_250816_044832_s1.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1140_NCLN_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/11/czML1140_NCLN_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/11/czML1140_NCLN_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": "/path/to/repo/my_inputs/pml499_slc3a2-c-term_xten80-sfgfp-3xha.json",
+				"fail_reads": null,
+				"father_id": "czML910_Parental_Ngn2-KOLF",
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250919_224047/1_D01/hifi_reads/m84251R1_250919_224842_s4.hifi_reads.bc2011.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250919_224047/1_D01/hifi_reads/m84251R1_250919_224842_s4.hifi_reads.unassigned.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250927_005759/1_C01/hifi_reads/m84251R1_250927_010532_s3.hifi_reads.bc2011.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML1138_SLC3A2_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/13/czML1138_SLC3A2_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/13/czML1138_SLC3A2_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": null,
+				"fail_reads": null,
+				"father_id": null,
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250821_225431/1_D01/hifi_reads/m84251R1_250822_030808_s4.hifi_reads.bc2190.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250821_225431/1_D01/hifi_reads/m84251R1_250822_030808_s4.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML921_APOE-C130R-mutation_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/12/czML921_APOE-C130R-mutation_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/12/czML921_APOE-C130R-mutation_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": null,
+				"fail_reads": null,
+				"father_id": null,
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20251220_015312/2_B01/hifi_reads/m84251R1_251221_135723_s3.hifi_reads.bc2066.bam",
+					"/path/to/sequencing/Revio/r84251R1_20251220_015312/2_B01/hifi_reads/m84251R1_251221_135723_s3.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML923_PSEN1_M146V_Clone-38_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/16/czML923_PSEN1_M146V_Clone-38_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/16/czML923_PSEN1_M146V_Clone-38_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			},
+			{
+				"affected": false,
+				"expected_edit": null,
+				"fail_reads": null,
+				"father_id": null,
+				"hifi_reads": [
+					"/path/to/sequencing/Revio/r84251R1_20250814_184752/1_B01/hifi_reads/m84251R1_250814_205823_s2.hifi_reads.bc2003.bam",
+					"/path/to/sequencing/Revio/r84251R1_20250814_184752/1_B01/hifi_reads/m84251R1_250814_205823_s2.hifi_reads.unassigned.bam"
+				],
+				"mother_id": null,
+				"sample_id": "czML924_PSEN1-M146V-mutation_Ngn2-KOLF",
+				"sex": "MALE",
+				"precomputed_asm_hap1": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap1/09/czML924_PSEN1-M146V-mutation_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap1.p_ctg.gfa",
+				"precomputed_asm_hap2": "/path/to/archive/HiFi-human-WGS-edit-QC-outputs/all_Ngn2-KOLF/outputs/20260118_205403_humanwgs_family/out/asm_hap2/09/czML924_PSEN1-M146V-mutation_Ngn2-KOLF_hifi_reads_merged.fa.gz.asm.bp.hap2.p_ctg.gfa"
+			}
+		]
+	},
+	"humanwgs_family.pharmcat_min_coverage": 1,
+	"humanwgs_family.phenotypes": "",
+	"humanwgs_family.preemptible": true,
+	"humanwgs_family.ref_map_file": "/path/to/repo/GRCh38.ref_map.v3p1p0.template.tsv",
+	"humanwgs_family.somatic_map_file": "/path/to/repo/GRCh38.somatic_map.v3p1p0.template.tsv",
+	"humanwgs_family.tertiary_map_file": "/path/to/repo/GRCh38.tertiary_map.v3p1p0.template.tsv"
+}

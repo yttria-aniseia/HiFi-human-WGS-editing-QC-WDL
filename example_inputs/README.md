@@ -46,6 +46,20 @@ For multiple edits in one sample, the edit JSON can contain multiple entries:
 }
 ```
 
+### Real publication examples (paths redacted)
+
+The following subfolders hold **complete, real input files as run for publication**. All
+absolute filesystem paths have been redacted to `/path/to/...` placeholders — substitute
+your own paths before use. Agents should consult these for up-to-date, full-fidelity
+examples of every input format:
+
+- `family_examples/` — full `humanwgs_family` input configs (parent + edited clones,
+  precomputed assemblies, ref/somatic/tertiary map references).
+- `edit_json/` — expected-edit JSONs (the `-extracontext` variants include
+  `donor_context_before`/`after` and `payload_components`).
+- `genbank/` — source Benchling GenBank plasmid maps that the edit JSONs were derived
+  from (via `genbank_to_crispr_json.py`).
+
 ## Usage
 
 1. Copy the appropriate example file

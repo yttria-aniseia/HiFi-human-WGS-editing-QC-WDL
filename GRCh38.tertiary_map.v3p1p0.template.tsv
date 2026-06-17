@@ -4,7 +4,7 @@ lof_lookup	hifi-wdl-resources-v3.1.0/slivar/lof.gnomadv4p1.lookup
 clinvar_lookup	hifi-wdl-resources-v3.1.0/slivar/clinvar_gene_desc.20250618T144412.txt
 slivar_gnotate_files	hifi-wdl-resources-v3.1.0/GRCh38/slivar_gnotate/gnomad.hg38.v4.1.custom.v1.zip,hifi-wdl-resources-v3.1.0/GRCh38/slivar_gnotate/CoLoRSdb.GRCh38.v1.2.0.deepvariant.glnexus.zip
 slivar_gnotate_prefixes	gnomad,colors
-slivar_max_af	0.03
+slivar_max_af	1.00
 slivar_max_nhomalt	4
 slivar_max_ac	4
 slivar_min_gq	5
