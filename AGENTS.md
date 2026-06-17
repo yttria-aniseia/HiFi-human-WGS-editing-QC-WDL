@@ -16,10 +16,17 @@ cluster**.
 ## Hard guardrails (must hold even when no skill is invoked)
 
 1. **Verify prerequisite reference data before doing anything that runs the workflow.**
-   `scripts/setup.sh` downloads ~200 GB into `hifi-wdl-resources-v3.1.0/` and populates the
-   map templates (`GRCh38.{ref,tertiary,somatic}_map.v3p1p0.template.tsv`). If the bundle dir
-   or the paths referenced inside the map files are **missing, STOP and tell the user to run
-   `scripts/setup.sh`** — never fabricate or guess reference paths.
+   `scripts/setup.sh` (→ `scripts/fetch_resources.sh`) pulls a **single frozen Zenodo bundle**
+   (resumable, checksum-verified) into `editing-qc-resources-v3.1.0/` and writes populated map
+   files `GRCh38.{ref,tertiary,somatic}_map.v3p1p0.template.tsv` at the repo root with absolute
+   paths (same filename as before, now holding substituted absolute paths).
+   If the bundle dir or the paths referenced inside the map files are **missing, STOP and tell
+   the user to run `scripts/setup.sh`** — never fabricate or guess reference paths.
+   - Versions are pinned in `resources/manifest.tsv` (the single source of truth).
+   - **dbNSFP is license-gated and not in the bundle** — the user supplies it via
+     `fetch_resources.sh --dbnsfp`; until then its somatic-map entries are placeholders.
+   - Rebuilding the bundle for a new version is a **maintainer** task via
+     `scripts/build_resource_bundle.sh` (the slow upstream pull) — never run that during setup.
 
 2. **Never read pipeline logs in full.** `workflow.log` and task stderr are enormous and
    highly repetitive. Always `grep -E "ERROR|FAILED|failed"`, `tail`, or scope to one
@@ -89,7 +96,10 @@ cluster**.
     later, which gives cleaner variant-filtering statistics for publication. It should have
     no effect on the actual final reported variants.
 - `genbank_to_crispr_json.py` — Benchling GenBank → expected-edit JSON converter.
-- `scripts/setup.sh` — one-time reference + container download.
+- `resources/manifest.tsv` — **single source of truth** for resource versions/URLs/checksums.
+- `scripts/setup.sh` — one-time setup: fetch frozen bundle (delegates to fetch_resources.sh) + build knock-knock container.
+- `scripts/fetch_resources.sh` — user-facing: resumable, checksum-verified pull of the frozen Zenodo bundle.
+- `scripts/build_resource_bundle.sh` — **maintainer-only**: slow upstream pull → frozen bundle tarball for Zenodo.
 - `scripts/launch.sh` — stages inputs and (optionally `--run`) launches the workflow.
 - `scripts/process_input_config.py` — BAM merge/strip/stage, called by launch.sh.
 - `scripts/create_image_manifest.sh` / `populate_miniwdl_singularity_cache.sh` — container prepull.

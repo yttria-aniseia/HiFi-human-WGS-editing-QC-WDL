@@ -40,7 +40,7 @@ Cromwell supports a number of different HPC backends; see [Cromwell's documentat
 
 ### Filling out workflow inputs
 
-Create an input configuration JSON describing your samples and their relationships. See [example_input_config.json](../example_input_config.json) as a template. After downloading reference data with `./scripts/setup.sh`, the template map files at the repository root will be populated with local paths.
+Create an input configuration JSON describing your samples and their relationships. See [example_input_config.json](../example_input_config.json) as a template. After downloading reference data with `./scripts/setup.sh`, the populated map files (`GRCh38.{ref,tertiary,somatic}_map.v3p1p0.template.tsv`) at the repository root will hold absolute local paths into the frozen bundle.
 
 See [family.md](./family.md) for input structure details, or [biohub-setup.md](./biohub-setup.md) for biohub-specific instructions.
 
@@ -80,12 +80,44 @@ cromwell run workflows/family.wdl --input <inputs_json_file>
 
 ## Reference data bundle
 
-[<img src="https://zenodo.org/badge/DOI/10.5281/zenodo.17086906.svg" alt="10.5281/zenodo.17086906">](https://zenodo.org/records/17086906)
+[<img src="https://zenodo.org/badge/DOI/10.5281/zenodo.20856447.svg" alt="10.5281/zenodo.20856447">](https://zenodo.org/records/20856447)
 
-Reference data is hosted on Zenodo. Use the provided setup script to download and configure:
+Reference data (~46 GB) is hosted on Zenodo. The download is resumable and checksum-verified; it typically takes 15–30 minutes depending on network speed.
+
+Before running setup, collect two prerequisites:
+
+**1. Set `SINGULARITY_CACHEDIR`** to a location with sufficient space (the knock-knock container
+is several GB). If unset, `setup.sh` skips the knock-knock build with a warning. A good default
+is a directory under the repo root on scratch:
 
 ```bash
-./scripts/setup.sh
+export SINGULARITY_CACHEDIR="$(pwd)/miniwdl_cache/singularity_cache"
+mkdir -p "${SINGULARITY_CACHEDIR}"
 ```
 
-This downloads ~200GB of reference files and updates the template map files with local paths. The process takes several hours.
+**2. Obtain dbNSFP** (license-gated, not in bundle). dbNSFP is required for somatic variant
+annotation. Request a licensed copy from [https://www.dbnsfp.org/download](https://www.dbnsfp.org/download).
+You need the **GRCh38 BGZF files** listed under _"dbNSFP variants in BGZF format for VEP and
+SnpEff annotation programs (sorted by GRCh38 and GRCh37 coordinates)"_:
+
+- `dbNSFP5.3.1a_grch38.gz`
+- `dbNSFP5.3.1a_grch38.gz.tbi`
+
+Have the path ready before running setup — passing it via `--dbnsfp` avoids re-running the
+full download a second time. If you cannot obtain dbNSFP yet, setup will complete with
+placeholders in the somatic map.
+
+Then download the bundle (~46 GB, resumable, typically 15–30 min) and build the knock-knock container:
+
+```bash
+# Recommended: pass dbNSFP in the same invocation
+./scripts/setup.sh --dbnsfp /path/to/dbNSFP5.3.1a_grch38.gz
+
+# Without dbNSFP (somatic map will have placeholders):
+./scripts/setup.sh
+
+# Resources only, no knock-knock build:
+./scripts/fetch_resources.sh --dbnsfp /path/to/dbNSFP5.3.1a_grch38.gz
+```
+
+All commands extract the bundle under the repo root and write ready-to-use map files (`GRCh38.{ref,tertiary,somatic}_map.v3p1p0.template.tsv`) with absolute paths. If a download is interrupted, re-run — it resumes from where it stopped.
