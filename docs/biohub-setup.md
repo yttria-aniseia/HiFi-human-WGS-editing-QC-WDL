@@ -14,7 +14,7 @@ Instructions for running the HiFi WGS CRISPR Edit QC pipeline on the Biohub HPC 
 
 ```bash
 git clone --recurse-submodules --depth=1 \
-  git@github.com:yttria-aniseia/HiFi-human-WGS-editing-QC-WDL.git
+  https://github.com/yttria-aniseia/HiFi-human-WGS-editing-QC-WDL.git
 cd HiFi-human-WGS-editing-QC-WDL
 ```
 
@@ -22,7 +22,7 @@ cd HiFi-human-WGS-editing-QC-WDL
 
 ```bash
 conda env create -f environment.yml
-conda activate hifi-wgs
+conda activate hifi-wdl
 ```
 
 ### 3. Configure miniwdl
