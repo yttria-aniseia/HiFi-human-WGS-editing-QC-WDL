@@ -10,16 +10,42 @@ description: Launch a HiFi WGS CRISPR edit-QC family run via launch.sh, monitor 
 Inputs must be staged under the run dir (apptainer only bind-mounts paths under cwd) — always
 go through `launch.sh`, never hand `family.wdl` raw external BAM paths.
 
+### Prerequisite: miniwdl.cfg (common first-run blocker)
+
+`launch.sh` needs a `miniwdl.cfg`. It defaults to `<repo_root>/miniwdl.cfg` and **aborts with
+"Default miniwdl.cfg not found"** if it's absent — there is no repo-root cfg checked in. Don't
+fabricate one: the canonical SLURM/singularity template is **`backends/hpc/miniwdl.cfg`**.
+
+- Recommend the **user** keep their own HPC-tuned copy at `~/.config/miniwdl.cfg`.
+- An **agent** can just point launch.sh at the in-repo template:
+  `--miniwdl-cfg backends/hpc/miniwdl.cfg` (or `cp backends/hpc/miniwdl.cfg <repo>/miniwdl.cfg`).
+
+launch.sh copies the chosen cfg into the work dir and rewrites its cache paths there — edit the
+template or `--cache-dir`/`--tmp-dir` flags, not the work-dir copy.
+
+**Set a shared cache at the repo root so multiple runs reuse the same container images.**
+`--cache-dir` defaults to `<work_dir>/miniwdl_cache`, which is **per-run** — every new work dir
+re-pulls/rebuilds all the SIFs from scratch (slow, and wastes disk). Point it at a single
+repo-root location instead, e.g. `--cache-dir <repo>/miniwdl_cache`, so the
+`singularity_cache/` (the built SIFs) is shared across runs and phase 1 is a near-no-op after
+the first run. The singularity image cache is the one that matters most to share; `--tmp-dir`
+can still be per-run/scratch.
+
+### Launch (in a screen/tmux session — runs for hours, must survive logout)
+
 ```bash
-# stage inputs + run
-./scripts/launch.sh my_input_config.json --work-dir <name> --run
+# from inside `screen` (or tmux): stage inputs + run
+./scripts/launch.sh my_input_config.json --work-dir <name> --miniwdl-cfg backends/hpc/miniwdl.cfg --run
 # or stage only, then run manually
-./scripts/launch.sh my_input_config.json --work-dir <name>
+./scripts/launch.sh my_input_config.json --work-dir <name> --miniwdl-cfg backends/hpc/miniwdl.cfg
 conda activate hifi-wgs && bash <name>/run_workflow.sh
 ```
 
-`launch.sh` phases: (1) prepull container images to the cache, (2) SLURM job that merges/strips/
-stages BAMs via `process_input_config.py`, (3) write `run_workflow.sh` and optionally launch.
+`launch.sh` phases: (1) prepull/build container images to the cache, (2) SLURM job that
+merges/strips/stages BAMs via `process_input_config.py`, (3) write `run_workflow.sh` and
+optionally launch. **Do not bypass phase 1** by calling `miniwdl run` on raw inputs — the
+container build is mandatory. A family run is long; start it in `screen`/`tmux` so it isn't
+killed at logout, rather than foregrounding or naively backgrounding it.
 
 ## Output directory structure (know this to avoid expensive find/grep)
 
