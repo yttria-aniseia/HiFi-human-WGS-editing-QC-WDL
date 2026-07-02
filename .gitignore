@@ -45,3 +45,5 @@ workflows/snakemake
 .env
 .venv
 .env
+editing-qc-resources-*/
+GRCh38.*_map.*.template.tsv

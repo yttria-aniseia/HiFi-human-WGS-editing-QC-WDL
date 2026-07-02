@@ -186,10 +186,26 @@ ls -la outputs/
 
 4. **Input Files**: Ensure all file paths in your input configuration JSON are accessible
 
-5. **Reference Data**: Download the reference bundle from Zenodo if using local paths
+5. **Reference Data**: Download the frozen reference bundle (~46 GB) from Zenodo (resumable,
+   checksum-verified, typically 15–30 min) and build the knock-knock container.
+   `setup.sh` reads `$SINGULARITY_CACHEDIR` for the container build — set it to a path with
+   sufficient space before running (unset = knock-knock build is skipped with a warning):
    ```bash
-   ./scripts/setup.sh
+   export SINGULARITY_CACHEDIR="$(pwd)/miniwdl_cache/singularity_cache"
+   mkdir -p "${SINGULARITY_CACHEDIR}"
+   ./scripts/setup.sh                          # bundle + knock-knock image
+   # or just the resources:  ./scripts/fetch_resources.sh [--dbnsfp FILE]
    ```
+   Versions are pinned in `resources/manifest.tsv`. **dbNSFP is license-gated and not in the
+   bundle.** Obtain `dbNSFP5.3.1a_grch38.gz` + `dbNSFP5.3.1a_grch38.gz.tbi` from
+   [https://www.dbnsfp.org/download](https://www.dbnsfp.org/download) (look for the GRCh38
+   BGZF files under _"dbNSFP variants in BGZF format for VEP and SnpEff"_), then pass
+   `--dbnsfp` to either `setup.sh` or `fetch_resources.sh`:
+   ```bash
+   ./scripts/setup.sh --dbnsfp /path/to/dbNSFP5.3.1a_grch38.gz
+   ```
+   Until then, `dbnsfp_file` entries in the somatic map are left as placeholders. Maintainers
+   rebuild the bundle for a new version with `./scripts/build_resource_bundle.sh`.
 
 ### Advanced Usage Examples
 

@@ -21,7 +21,7 @@
         "sex": "FEMALE",
         "father_id": null,
         "mother_id": "parent_wt",
-        "expected_edits": "/path/to/your/edited_clone1_expected_edits.json"
+        "expected_edit": "/path/to/your/edited_clone1_expected_edits.json"
       },
       {
         "sample_id": "edited_clone2",
@@ -32,7 +32,7 @@
         "sex": "FEMALE",
         "father_id": null,
         "mother_id": "parent_wt",
-        "expected_edits": "/path/to/your/edited_clone2_expected_edits.json"
+        "expected_edit": "/path/to/your/edited_clone2_expected_edits.json"
       }
     ]
   },

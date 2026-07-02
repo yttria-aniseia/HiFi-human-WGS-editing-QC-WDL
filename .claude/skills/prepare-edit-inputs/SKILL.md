@@ -10,13 +10,16 @@ Goal: produce a valid `input_config.json` (+ per-sample expected-edit JSONs) tha
 
 ## 0. Preflight: is the reference data present?
 
-Before anything else, confirm `scripts/setup.sh` has been run (see AGENTS.md guardrail 1):
-- Check `hifi-wdl-resources-v3.1.0/` exists and the paths inside
+Before anything else, confirm the resource bundle has been fetched (see AGENTS.md guardrail 1).
+`scripts/setup.sh` (or `scripts/fetch_resources.sh` directly) pulls the frozen Zenodo bundle
+into `editing-qc-resources-v3.1.0/` and writes populated map files
+`GRCh38.{ref,tertiary,somatic}_map.v3p1p0.template.tsv` at the repo root:
+- Check `editing-qc-resources-v3.1.0/` exists and the absolute paths inside
   `GRCh38.ref_map.v3p1p0.template.tsv` resolve to real files.
-- **`<prefix>` placeholders:** unmodified templates contain `<prefix>/...` paths.
-  `setup.sh` strips these (`sed "s/<prefix>\///g"`). If you still see `<prefix>` in a map
-  file, the template was never populated — tell the user to run `scripts/setup.sh`. Do not
-  hand-edit placeholders into guessed absolute paths.
+- **`<prefix>` placeholders:** the in-bundle `*.template.tsv` files contain `<prefix>/...`
+  paths; `fetch_resources.sh` substitutes the absolute bundle path when writing the populated
+  `*.template.tsv`. If you still see `<prefix>` in a populated map file, the fetch never ran — tell the
+  user to run `scripts/setup.sh`. Do not hand-edit placeholders into guessed absolute paths.
 
 ## Interpreting a sample request into samples
 
@@ -73,15 +76,17 @@ Resolution rules that recur regardless of format:
 
 ## 1. dbNSFP licensing (do this once, flag every time)
 
-`setup.sh` auto-downloads **dbNSFP v4.9a** as a *fallback only*. v4.x omits columns that are
-license-gated for commercial use. **Academic users should register at
-https://www.dbnsfp.org/download and obtain dbNSFP v5.3+**, then:
-- place the indexed file alongside the other references,
-- update `DBNSFP_VERSION` in `setup.sh` (or the download step) and
-- update the `dbnsfp` entry in `GRCh38.somatic_map.v3p1p0.template.tsv` to point at it.
+dbNSFP is **license-gated and deliberately NOT in the frozen bundle** (academic-free /
+commercial-licensed). The pinned version lives in `resources/manifest.tsv` (`dbnsfp_ver`).
+**Academic users register at https://www.dbnsfp.org/download, obtain the pinned version**,
+build the bgzip+tabix `_grch38.gz` file, then re-run the fetch step pointing at it:
+- `./scripts/fetch_resources.sh --dbnsfp /path/to/dbNSFP_grch38.gz` (`.tbi` alongside) —
+  this patches the `dbnsfp_file`/`dbnsfp_file_index` entries in the populated
+  `GRCh38.somatic_map.v3p1p0.template.tsv`.
+- To change the pinned version, edit `dbnsfp_ver` in `resources/manifest.tsv`.
 
 The agent cannot download a registered file — surface this to the user and confirm which
-dbNSFP version their somatic map points at.
+dbNSFP version their somatic map points at. Until provided, those entries are placeholders.
 
 ## 2. Expected-edit JSON from a Benchling GenBank file
 

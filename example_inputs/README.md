@@ -65,7 +65,7 @@ examples of every input format:
 1. Copy the appropriate example file
 2. Update file paths to your data:
    - HiFi read BAM files (`hifi_reads`)
-   - Expected edit JSON files (`expected_edits`)
+   - Expected edit JSON files (`expected_edit`)
 3. Update sample metadata (IDs, sex, relationships)
 4. Run the workflow:
 

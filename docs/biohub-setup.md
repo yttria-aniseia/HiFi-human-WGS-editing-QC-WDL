@@ -29,15 +29,49 @@ conda activate hifi-wdl
 
 Create or edit `~/.config/miniwdl.cfg` for your HPC environment. See [docs/backend-hpc.md](backend-hpc.md) for SLURM-specific configuration.
 
-### 4. Download reference data
+### 4. Download reference data and build containers
 
-This downloads ~200GB of reference files and will take several hours:
+Before running setup, collect two prerequisites:
+
+#### 4a. Set container cache location
+
+`setup.sh` builds the knock-knock Singularity image into `$SINGULARITY_CACHEDIR`. On Biohub
+HPC the default home-directory cache is too small — point it at scratch storage first:
 
 ```bash
-./scripts/setup.sh
+export SINGULARITY_CACHEDIR="$(pwd)/miniwdl_cache/singularity_cache"
+mkdir -p "${SINGULARITY_CACHEDIR}"
 ```
 
-This populates the reference map template files at the repository root with local paths.
+If `SINGULARITY_CACHEDIR` is unset, `setup.sh` will skip the knock-knock build with a warning
+and you will need to re-run it later with the variable set.
+
+#### 4b. Obtain dbNSFP (license-gated)
+
+dbNSFP is required for somatic variant annotation but is not in the bundle due to licensing.
+Request a licensed copy from [https://www.dbnsfp.org/download](https://www.dbnsfp.org/download).
+You need the **GRCh38 BGZF files** listed under _"dbNSFP variants in BGZF format for VEP and
+SnpEff annotation programs (sorted by GRCh38 and GRCh37 coordinates)"_:
+
+- `dbNSFP5.3.1a_grch38.gz`
+- `dbNSFP5.3.1a_grch38.gz.tbi`
+
+Have the path to `dbNSFP5.3.1a_grch38.gz` ready before running setup — passing it via
+`--dbnsfp` avoids having to re-run the full download a second time. If you cannot obtain
+dbNSFP yet, setup will complete with placeholders in the somatic map.
+
+#### 4c. Run setup
+
+Downloads ~46 GB from Zenodo (resumable; typically 15–30 min), writes map files with
+absolute paths, and builds the knock-knock container:
+
+```bash
+# Recommended: pass dbNSFP in the same invocation
+./scripts/setup.sh --dbnsfp /path/to/dbNSFP5.3.1a_grch38.gz
+
+# Without dbNSFP (somatic map will have placeholders — patch later with fetch_resources.sh --dbnsfp):
+./scripts/setup.sh
+```
 
 ## Preparing Input Files
 

@@ -50,6 +50,5 @@ This fork adds specialized tools for CRISPR editing validation and somatic varia
 | --------: | ------------------- | :---: |
 | ensembl-vep | <ul><li>VEP (variant annotation)</li></ul> | [ensembl-vep@sha256:e7612ab7c2923f2b9a78592b939e74874cd29f7494d70ee7135c8303841b03a8](https://hub.docker.com/r/ensemblorg/ensembl-vep) |
 | annotsv | <ul><li>AnnotSV (SV annotation)</li></ul> | [annotsv@sha256:0c73fef5fa529b11e10bea0355480f01b56d0feb21af54cb9bbbd1f9f4c862a7](https://quay.io/repository/biocontainers/annotsv) |
-| severus | <ul><li>Severus (phased SV calling)</li></ul> | [severus@sha256:fb4471e0504d564de78215ae15c081a1bb2022ad51e993eba92bc6fa5052a05d](https://quay.io/repository/biocontainers/severus) |
 | somatic_general_tools | <ul><li>Somatic analysis utilities</li></ul> | [somatic_general_tools@sha256:a25a2e62b88c73fa3c18a0297654420a4675224eb0cf39fa4192f8a1e92b30d6](https://quay.io/repository/pacbio/somatic_general_tools) |
 | chord | <ul><li>CHORD (HRD prediction)</li></ul> | [chord@sha256:9f6aa44ffefe3f736e66a0e2d7941d4f3e1cc6d848a9a11a17e85a6525e63a77](https://hub.docker.com/r/scwatts/chord) |

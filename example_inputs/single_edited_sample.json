@@ -9,7 +9,7 @@
         ],
         "affected": true,
         "sex": "FEMALE",
-        "expected_edits": "/path/to/expected_edits.json"
+        "expected_edit": "/path/to/expected_edits.json"
       }
     ]
   },

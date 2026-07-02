@@ -1,0 +1,42 @@
+# manifest.tsv — single source of truth for resource versions/provenance.
+#
+# This pins every upstream resource that build_resource_bundle.sh pulls and
+# freezes into the bundle tarball. Bump a version HERE, re-run
+# build_resource_bundle.sh, re-upload to Zenodo, update BUNDLE_* below. Users
+# never read this file — they only run fetch_resources.sh against the frozen
+# Zenodo record.
+#
+# Columns: key<TAB>value
+#
+# --- bundle identity (what fetch_resources.sh downloads) ----------------------
+bundle_version	v3.1.0
+bundle_tar	editing-qc-resources-v3.1.0.tar
+# Zenodo record holding the frozen bundle.
+bundle_zenodo_record	20856447
+# sha256 of the bundle tar; written by build_resource_bundle.sh, checked by fetch.
+bundle_sha256	2fb5f71f6af9c69cfdf34edc4e75a208fb6db8fdfe48a8bfffa504e938a77763
+#
+# --- redistributable upstreams (frozen INTO the bundle) -----------------------
+# key	value
+hifi_wdl_resources_ver	v3.1.0
+hifi_wdl_resources_url	https://zenodo.org/records/17086906/files/hifi-wdl-resources-v3.1.0.tar
+hg002_fasta_url	https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/hg002v1.1.fasta.gz
+hg002_chain_url	https://s3-us-west-2.amazonaws.com/human-pangenomics/T2T/HG002/assemblies/changes/hg002v1.1_to_GRCh38.chain.gz
+# hifisomatic suite — only the reformatted Ensembl GFF3 (ref_gff) is extracted into
+# the bundle; the rest belonged to the removed Severus somatic-calling path.
+hifisomatic_resources_url	https://zenodo.org/record/14847828/files/hifisomatic_resources.tar.gz
+# AnnotSV: install-script commit AND the (annotation_ver, exomiser_ver) args are
+# pinned together so the cache always matches the AnnotSV container in the pipeline.
+annotsv_install_commit	b270de3f6db45e4c4ad6b32e7fc868f2369b62c3
+annotsv_annotation_ver	3.5
+annotsv_exomiser_ver	2406
+vep_ver	115
+vep_cache_url	https://ftp.ensembl.org/pub/release-115/variation/indexed_vep_cache/homo_sapiens_refseq_vep_115_GRCh38.tar.gz
+clinvar_vcf_url	https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz
+clinvar_tbi_url	https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar.vcf.gz.tbi
+#
+# --- license-gated, NOT in the bundle (user obtains separately) ---------------
+# dbNSFP: academic-free / commercial-licensed. fetch_resources.sh prints
+# instructions and patches the somatic map; the file is never re-hosted.
+dbnsfp_ver	5.3.1a
+dbnsfp_download_page	https://www.dbnsfp.org/download
